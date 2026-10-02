@@ -1,0 +1,16 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# Free plan: the service sleeps after 15 idle minutes and takes about a
+# minute to wake. Switching `plan` to a paid one keeps it always on.
+services:
+  - name: mockingbird-website
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    domains:
+      - mockingbirdvoice.org
+      - www.mockingbirdvoice.org
