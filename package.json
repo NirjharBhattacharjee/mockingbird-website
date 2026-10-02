@@ -1,0 +1,23 @@
+{
+  "name": "mockingbird-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run css && (bun run css:watch & NODE_ENV=development bun --watch server.ts)",
+    "start": "bun run css && NODE_ENV=production bun server.ts",
+    "css": "tailwindcss -i app/styles/app.css -o public/styles.css --minify",
+    "css:watch": "tailwindcss -i app/styles/app.css -o public/styles.css --watch",
+    "test": "NODE_ENV=test remix test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "remix": "^3.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.4",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

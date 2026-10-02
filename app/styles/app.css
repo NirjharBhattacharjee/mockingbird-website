@@ -1,0 +1,236 @@
+@import "tailwindcss";
+
+/* ---------- fonts (self-hosted: the site makes no third-party requests) ---------- */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations");
+  font-weight: 100 800;
+  font-display: swap;
+}
+
+/* ---------- Catppuccin flavors (press T to cycle) ---------- */
+:root,
+[data-flavor="mocha"] {
+  --crust: #11111b; --mantle: #181825; --base: #1e1e2e;
+  --surface0: #313244; --surface1: #45475a; --surface2: #585b70;
+  --overlay1: #7f849c; --subtext0: #a6adc8; --subtext1: #bac2de; --text: #cdd6f4;
+  --sky: #89dceb; --teal: #94e2d5; --blue: #89b4fa; --mauve: #cba6f7; --lavender: #b4befe;
+  --green: #a6e3a1; --peach: #fab387; --yellow: #f9e2af; --red: #f38ba8; --rosewater: #f5e0dc;
+  color-scheme: dark;
+}
+[data-flavor="macchiato"] {
+  --crust: #181926; --mantle: #1e2030; --base: #24273a;
+  --surface0: #363a4f; --surface1: #494d64; --surface2: #5b6078;
+  --overlay1: #8087a2; --subtext0: #a5adcb; --subtext1: #b8c0e0; --text: #cad3f5;
+  --sky: #91d7e3; --teal: #8bd5ca; --blue: #8aadf4; --mauve: #c6a0f6; --lavender: #b7bdf8;
+  --green: #a6da95; --peach: #f5a97f; --yellow: #eed49f; --red: #ed8796; --rosewater: #f4dbd6;
+  color-scheme: dark;
+}
+[data-flavor="frappe"] {
+  --crust: #232634; --mantle: #292c3c; --base: #303446;
+  --surface0: #414559; --surface1: #51576d; --surface2: #626880;
+  --overlay1: #838ba7; --subtext0: #a5adce; --subtext1: #b5bfe2; --text: #c6d0f5;
+  --sky: #99d1db; --teal: #81c8be; --blue: #8caaee; --mauve: #ca9ee6; --lavender: #babbf1;
+  --green: #a6d189; --peach: #ef9f76; --yellow: #e5c890; --red: #e78284; --rosewater: #f2d5cf;
+  color-scheme: dark;
+}
+[data-flavor="latte"] {
+  --crust: #dce0e8; --mantle: #e6e9ef; --base: #eff1f5;
+  --surface0: #ccd0da; --surface1: #bcc0cc; --surface2: #acb0be;
+  --overlay1: #8c8fa1; --subtext0: #6c6f85; --subtext1: #5c5f77; --text: #4c4f69;
+  --sky: #04a5e5; --teal: #179299; --blue: #1e66f5; --mauve: #8839ef; --lavender: #7287fd;
+  --green: #40a02b; --peach: #fe640b; --yellow: #df8e1d; --red: #d20f39; --rosewater: #dc8a78;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-crust: var(--crust);
+  --color-mantle: var(--mantle);
+  --color-base: var(--base);
+  --color-surface0: var(--surface0);
+  --color-surface1: var(--surface1);
+  --color-surface2: var(--surface2);
+  --color-overlay: var(--overlay1);
+  --color-subtle: var(--subtext0);
+  --color-soft: var(--subtext1);
+  --color-text: var(--text);
+  --color-sky: var(--sky);
+  --color-teal: var(--teal);
+  --color-blue: var(--blue);
+  --color-mauve: var(--mauve);
+  --color-lavender: var(--lavender);
+  --color-green: var(--green);
+  --color-peach: var(--peach);
+  --color-yellow: var(--yellow);
+  --color-red: var(--red);
+  --color-rosewater: var(--rosewater);
+  --color-ink: var(--crust);
+
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@layer base {
+  html {
+    background: var(--crust);
+    color: var(--text);
+    scroll-behavior: smooth;
+    scroll-padding-top: 4rem;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply font-mono text-[13px] leading-relaxed;
+  }
+  ::selection {
+    background: var(--surface1);
+  }
+  :focus-visible {
+    outline: 2px solid var(--sky);
+    outline-offset: 2px;
+  }
+}
+
+/* ---------- components ---------- */
+@utility btn {
+  @apply inline-flex items-center gap-2 px-3.5 py-2 font-mono text-[13px] font-medium transition-[background-color,translate] duration-150 ease-out hover:-translate-y-px;
+}
+@utility btn-primary {
+  @apply btn bg-sky text-ink hover:bg-[color-mix(in_oklab,var(--sky),white_18%)];
+}
+@utility btn-ghost {
+  @apply btn bg-surface0 text-text hover:bg-surface1;
+}
+@utility card {
+  @apply border border-surface0 bg-[color-mix(in_oklab,var(--base),var(--mantle)_50%)];
+}
+@utility eyebrow {
+  @apply font-mono text-[12px] font-medium tracking-[0.18em] text-sky uppercase;
+}
+@utility section-title {
+  @apply font-sans text-[26px] font-semibold tracking-tight text-text sm:text-[28px];
+}
+@utility link {
+  @apply text-sky underline decoration-1 underline-offset-4 hover:decoration-2;
+}
+@utility kbd {
+  @apply inline-flex min-w-7 items-center justify-center border border-surface2 border-b-[3px] bg-surface0 px-1.5 py-0.5 font-mono text-[12px] font-bold text-text;
+}
+
+/* ---------- motion ---------- */
+
+/* hero copy rises in, staggered */
+@keyframes hero-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.rise {
+  animation: hero-rise 0.55s cubic-bezier(0.21, 0.47, 0.32, 0.98) both;
+  animation-delay: calc(var(--i, 0) * 70ms + 900ms);
+}
+
+/* block caret, like a terminal */
+@keyframes caret-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+.caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  background: var(--sky);
+  animation: caret-blink 1.06s step-end infinite;
+}
+.caret-thin {
+  width: 2px;
+}
+
+/* sections fade up as they scroll in (no JS) */
+@supports (animation-timeline: view()) {
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  .reveal {
+    animation: reveal linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 40%;
+  }
+}
+
+/* pipeline: a pixel travels the connectors */
+@keyframes pulse-travel {
+  from { left: -8px; }
+  to { left: 100%; }
+}
+.pulse-dot {
+  animation: pulse-travel 1s steps(8) infinite;
+  animation-delay: var(--d, 0s);
+}
+@keyframes stage-glow {
+  0%, 100% { border-color: var(--surface0); }
+  10%, 30% { border-color: var(--stage); }
+}
+.stage {
+  --stage: var(--sky);
+  animation: stage-glow 4s steps(4) infinite;
+  animation-delay: var(--d, 0s);
+}
+
+/* level meter bars in the demo */
+@keyframes meter {
+  0%, 100% { transform: scaleY(0.15); }
+  50% { transform: scaleY(1); }
+}
+[data-state="listening"] .meter-bar {
+  animation: meter calc(260ms + var(--i) * 37ms) steps(5) infinite alternate;
+}
+.meter-bar {
+  transform-origin: bottom;
+  transform: scaleY(0.15);
+}
+
+/* flavor switch: a quick diagonal wipe (View Transitions) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) {
+  animation: flavor-wipe 0.32s cubic-bezier(0.7, 0, 0.3, 1) both;
+}
+@keyframes flavor-wipe {
+  from { clip-path: polygon(0 0, 0 0, 0 0, 0 0); }
+  to { clip-path: polygon(0 0, 220% 0, 0 220%, 0 0); }
+}
+
+.pixel-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+.pixelated {
+  image-rendering: pixelated;
+}
+
+/* without JS, show a text wordmark in place of the canvas one */
+html.js .no-js-only {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,4 +1,5 @@
 node_modules/
 dist/
-.astro/
+public/styles.css
 .DS_Store
+*.mov
