@@ -9,6 +9,8 @@ export interface DocumentProps {
   description?: string
 }
 
+export const SITE_URL = 'https://mockingbirdvoice.org'
+
 const DEFAULT_TITLE = 'mockingbird — local voice dictation for macOS'
 const DEFAULT_DESCRIPTION =
   'Hold Fn, speak, let go. Free forever, open source, and your voice never leaves your Mac.'
@@ -26,6 +28,10 @@ export function Document(handle: Handle<DocumentProps>) {
           <title>{title}</title>
           <meta name="description" content={description} />
           <meta name="theme-color" content="#11111b" />
+          <link rel="canonical" href={`${SITE_URL}/`} />
+          <meta property="og:type" content="website" />
+          <meta property="og:url" content={`${SITE_URL}/`} />
+          <meta property="og:site_name" content="mockingbird" />
           <meta property="og:title" content={title} />
           <meta property="og:description" content={description} />
           <link rel="icon" type="image/png" href="/brand/logo.png" />
