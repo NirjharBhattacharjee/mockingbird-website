@@ -4,4 +4,5 @@ export const routes = route({
   assets: get('/assets/*path'),
   health: get('/healthz'),
   home: '/',
+  docs: get('/docs(/:slug)'),
 })

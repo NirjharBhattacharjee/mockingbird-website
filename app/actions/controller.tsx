@@ -1,7 +1,9 @@
 import { createController } from 'remix/router'
 
 import { assets } from '../assets.ts'
+import { loadDoc } from '../docs.ts'
 import { routes } from '../routes.ts'
+import { DocsPage, NotFoundPage } from './docs-page.tsx'
 import { HomePage } from './home-page.tsx'
 
 export default createController(routes, {
@@ -15,6 +17,11 @@ export default createController(routes, {
     },
     home(context) {
       return context.render(<HomePage />)
+    },
+    async docs(context) {
+      let doc = await loadDoc(context.params.slug ?? '')
+      if (!doc) return context.render(<NotFoundPage />, { status: 404 })
+      return context.render(<DocsPage doc={doc} />)
     },
   },
 })

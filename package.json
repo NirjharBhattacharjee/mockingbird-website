@@ -7,8 +7,9 @@
     "start": "bun run css && NODE_ENV=production bun server.ts",
     "css": "tailwindcss -i app/styles/app.css -o public/styles.css --minify",
     "css:watch": "tailwindcss -i app/styles/app.css -o public/styles.css --watch",
-    "test": "NODE_ENV=test remix test",
-    "typecheck": "tsc --noEmit"
+    "test": "NODE_ENV=test bun --bun remix test",
+    "typecheck": "tsc --noEmit",
+    "docs:sync": "cp ${MOCKINGBIRD_DIR:-../mockingbird}/docs/*.md content/docs/"
   },
   "dependencies": {
     "remix": "^3.0.0"

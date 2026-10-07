@@ -15,6 +15,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 COPY --from=build /app/app ./app
 COPY --from=build /app/public ./public
+COPY --from=build /app/content ./content
 COPY --from=build /app/server.ts /app/tsconfig.json ./
 USER bun
 EXPOSE 8080

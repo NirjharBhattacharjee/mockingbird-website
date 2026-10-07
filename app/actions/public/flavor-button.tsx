@@ -1,6 +1,6 @@
 import { clientEntry, on, type Handle } from 'remix/component'
 
-import { THEME_EVENT, isTypingTarget, prefersReducedMotion, storage } from './lib/events.ts'
+import { THEME_EVENT, isPageShortcut, prefersReducedMotion, storage } from './lib/events.ts'
 
 const FLAVORS = ['mocha', 'macchiato', 'frappe', 'latte'] as const
 type Flavor = (typeof FLAVORS)[number]
@@ -12,7 +12,8 @@ function currentFlavor(): Flavor {
   return f && FLAVORS.includes(f) ? f : 'mocha'
 }
 
-// Cycles the Catppuccin flavor. Also owns the page-wide T shortcut.
+// Cycles the Catppuccin flavor. Also owns the page-wide letter shortcuts: T
+// for the flavor, and the nav links marked with data-key ("[g] guide").
 export const FlavorButton = clientEntry(import.meta.url, function FlavorButton(handle: Handle) {
   let flavor: Flavor = 'mocha'
 
@@ -44,27 +45,27 @@ export const FlavorButton = clientEntry(import.meta.url, function FlavorButton(h
     window.addEventListener(
       'keydown',
       (e) => {
-        if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
-        if (e.key === 't' || e.key === 'T') cycle()
+        if (e.repeat || !isPageShortcut(e)) return
+        let key = e.key.toLowerCase()
+        if (key === 't') return cycle()
+        document.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.click()
       },
       { signal: handle.signal },
     )
   })
 
   return () => (
-    <button
-      type="button"
-      title="Change the flavor (T)"
-      class="flex items-center gap-2 px-2 py-1.5 text-soft hover:text-text"
-      mix={on('click', cycle)}
-    >
+    <button type="button" title="Change the flavor (T)" class="chip" aria-keyshortcuts="t" mix={on('click', cycle)}>
+      <span aria-hidden="true" class="text-sky">
+        [t]
+      </span>
       <span aria-hidden="true" class="grid grid-cols-2 gap-px">
         <i class="block size-[5px] bg-sky" />
         <i class="block size-[5px] bg-mauve" />
         <i class="block size-[5px] bg-peach" />
         <i class="block size-[5px] bg-green" />
       </span>
-      <span class="text-[12px]">{LABELS[flavor]}</span>
+      <span>{LABELS[flavor].toLowerCase()}</span>
     </button>
   )
 })

@@ -3,3 +3,4 @@ dist/
 public/styles.css
 .DS_Store
 *.mov
+.claude/worktrees/

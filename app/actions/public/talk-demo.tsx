@@ -1,6 +1,6 @@
 import { clientEntry, on, type Handle } from 'remix/component'
 
-import { type TalkState, cx, emitTalk, isTypingTarget, prefersReducedMotion, wait } from './lib/events.ts'
+import { type TalkState, cx, emitTalk, isPageShortcut, prefersReducedMotion, wait } from './lib/events.ts'
 
 // Scripted, so the page never asks for the microphone. Each sample shows what
 // Whisper hears (raw) and what the cleanup model types (clean).
@@ -77,7 +77,7 @@ export const TalkDemo = clientEntry(import.meta.url, function TalkDemo(handle: H
     window.addEventListener(
       'keydown',
       (e) => {
-        if (e.metaKey || e.ctrlKey || e.altKey || isTypingTarget(e.target)) return
+        if (!isPageShortcut(e)) return
         if (e.key !== 'f' && e.key !== 'F') return
         e.preventDefault()
         if (!e.repeat) start()

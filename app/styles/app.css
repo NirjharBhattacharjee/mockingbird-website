@@ -1,17 +1,35 @@
 @import "tailwindcss";
 
-/* ---------- fonts (self-hosted: the site makes no third-party requests) ---------- */
+/* ---------- fonts (self-hosted: the site makes no third-party requests) ----------
+   JetBrains Mono Nerd Font, split in two: the text faces, and the icons as
+   their own family that the font stack falls back to for icon glyphs. */
 @font-face {
-  font-family: "Geist";
-  src: url("/fonts/geist-latin-wght-normal.woff2") format("woff2-variations");
-  font-weight: 100 900;
+  font-family: "JetBrains Mono Nerd";
+  src: url("/fonts/jetbrains-mono-nerd-regular.woff2") format("woff2");
+  font-weight: 400;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2190-21FF, U+2212, U+2215, U+2300-23FF, U+2500-25FF, U+2600-26FF, U+2713-2717;
 }
 @font-face {
-  font-family: "JetBrains Mono";
-  src: url("/fonts/jetbrains-mono-latin-wght-normal.woff2") format("woff2-variations");
-  font-weight: 100 800;
+  font-family: "JetBrains Mono Nerd";
+  src: url("/fonts/jetbrains-mono-nerd-bold.woff2") format("woff2");
+  font-weight: 700;
   font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2190-21FF, U+2212, U+2215, U+2300-23FF, U+2500-25FF, U+2600-26FF, U+2713-2717;
+}
+@font-face {
+  font-family: "JetBrains Mono Nerd";
+  src: url("/fonts/jetbrains-mono-nerd-extrabold.woff2") format("woff2");
+  font-weight: 800;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2190-21FF, U+2212, U+2215, U+2300-23FF, U+2500-25FF, U+2600-26FF, U+2713-2717;
+}
+/* the Nerd Font icons, fetched only when a page shows one */
+@font-face {
+  font-family: "JetBrains Mono Nerd Icons";
+  src: url("/fonts/jetbrains-mono-nerd-icons.woff2") format("woff2");
+  font-display: block;
+  unicode-range: U+E0A0-E0D4, U+F000-F2E0, U+F400-F533;
 }
 
 /* ---------- Catppuccin flavors (press T to cycle) ---------- */
@@ -72,8 +90,8 @@
   --color-rosewater: var(--rosewater);
   --color-ink: var(--crust);
 
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "JetBrains Mono Nerd", "JetBrains Mono Nerd Icons", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-mono);
 }
 
 @layer base {
@@ -81,11 +99,11 @@
     background: var(--crust);
     color: var(--text);
     scroll-behavior: smooth;
-    scroll-padding-top: 4rem;
+    scroll-padding-top: 5rem;
     -webkit-font-smoothing: antialiased;
   }
   body {
-    @apply font-mono text-[13px] leading-relaxed;
+    @apply font-mono text-[16px] leading-[1.65];
   }
   ::selection {
     background: var(--surface1);
@@ -98,7 +116,7 @@
 
 /* ---------- components ---------- */
 @utility btn {
-  @apply inline-flex items-center gap-2 px-3.5 py-2 font-mono text-[13px] font-medium transition-[background-color,translate] duration-150 ease-out hover:-translate-y-px;
+  @apply inline-flex items-center gap-2 px-4 py-2.5 text-[15px] font-bold transition-[background-color,translate] duration-150 ease-out hover:-translate-y-px;
 }
 @utility btn-primary {
   @apply btn bg-sky text-ink hover:bg-[color-mix(in_oklab,var(--sky),white_18%)];
@@ -109,17 +127,200 @@
 @utility card {
   @apply border border-surface0 bg-[color-mix(in_oklab,var(--base),var(--mantle)_50%)];
 }
-@utility eyebrow {
-  @apply font-mono text-[12px] font-medium tracking-[0.18em] text-sky uppercase;
+@utility panel {
+  @apply border border-surface0 bg-[color-mix(in_oklab,var(--mantle),transparent_6%)] p-6 backdrop-blur-sm sm:p-8;
 }
-@utility section-title {
-  @apply font-sans text-[26px] font-semibold tracking-tight text-text sm:text-[28px];
+@utility scene-title {
+  @apply text-[34px] leading-[1.05] font-extrabold tracking-[-0.035em] text-text sm:text-[46px];
 }
 @utility link {
   @apply text-sky underline decoration-1 underline-offset-4 hover:decoration-2;
 }
 @utility kbd {
-  @apply inline-flex min-w-7 items-center justify-center border border-surface2 border-b-[3px] bg-surface0 px-1.5 py-0.5 font-mono text-[12px] font-bold text-text;
+  @apply inline-flex min-w-7 items-center justify-center border border-surface2 border-b-[3px] bg-surface0 px-1.5 py-0.5 text-[13px] font-bold text-text;
+}
+/* nav shortcuts: "[g] guide" */
+@utility chip {
+  @apply inline-flex items-center gap-1.5 border border-surface1 bg-[color-mix(in_oklab,var(--crust),transparent_15%)] px-2 py-1 text-[13px] text-soft transition-colors hover:border-sky hover:text-text;
+}
+
+/* ---------- tabs: radio inputs, so they work without JavaScript ----------
+   The tab list is a <fieldset>, so `.tabpanel:nth-of-type()` counts only the
+   panel <div>s and `label:nth-of-type()` skips the <legend>. */
+.tablist {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  min-inline-size: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.tablist label {
+  cursor: pointer;
+  border: 1px solid var(--surface1);
+  padding: 0.3rem 0.75rem;
+  font-size: 14px;
+  color: var(--subtext1);
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+}
+.tablist label:hover {
+  color: var(--text);
+  border-color: var(--surface2);
+}
+.tablist label:has(input:checked) {
+  color: var(--crust);
+  background: var(--tab, var(--sky));
+  border-color: var(--tab, var(--sky));
+}
+.tablist label:has(input:focus-visible) {
+  outline: 2px solid var(--sky);
+  outline-offset: 2px;
+}
+.tabpanel {
+  display: none;
+}
+.tabs:has(.tablist > label:nth-of-type(1) input:checked) > .tabpanel:nth-of-type(1),
+.tabs:has(.tablist > label:nth-of-type(2) input:checked) > .tabpanel:nth-of-type(2),
+.tabs:has(.tablist > label:nth-of-type(3) input:checked) > .tabpanel:nth-of-type(3),
+.tabs:has(.tablist > label:nth-of-type(4) input:checked) > .tabpanel:nth-of-type(4),
+.tabs:has(.tablist > label:nth-of-type(5) input:checked) > .tabpanel:nth-of-type(5),
+.tabs:has(.tablist > label:nth-of-type(6) input:checked) > .tabpanel:nth-of-type(6) {
+  display: block;
+}
+
+/* ---------- docs ---------- */
+.doc {
+  max-width: 74ch;
+  color: var(--subtext1);
+}
+.doc :where(h1, h2, h3, h4) {
+  position: relative;
+  color: var(--text);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  scroll-margin-top: 5rem;
+}
+.doc h1 {
+  margin: 3.5rem 0 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--surface0);
+  font-size: 30px;
+}
+.doc h2 {
+  margin: 3rem 0 1rem;
+  font-size: 25px;
+}
+.doc h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 19px;
+}
+.doc h4 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 16px;
+}
+.doc .anchor {
+  position: absolute;
+  left: -1.1em;
+  color: var(--surface2);
+  text-decoration: none;
+  opacity: 0;
+}
+.doc :where(h1, h2, h3, h4):hover .anchor {
+  opacity: 1;
+}
+.doc :where(p, ul, ol, table, pre, blockquote, details) {
+  margin: 1rem 0;
+}
+.doc :where(ul, ol) {
+  padding-left: 1.4rem;
+}
+.doc ul {
+  list-style: square;
+}
+.doc ol {
+  list-style: decimal;
+}
+.doc li {
+  margin: 0.35rem 0;
+}
+.doc li::marker {
+  color: var(--surface2);
+}
+.doc .task-list-item {
+  list-style: none;
+}
+.doc .task-list-item input {
+  margin-right: 0.5rem;
+  accent-color: var(--green);
+}
+.doc a {
+  color: var(--sky);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+.doc a:hover {
+  text-decoration-thickness: 2px;
+}
+.doc strong {
+  color: var(--text);
+}
+.doc em {
+  color: var(--text);
+}
+.doc code {
+  color: var(--peach);
+  font-size: 0.92em;
+}
+.doc pre {
+  overflow-x: auto;
+  border: 1px solid var(--surface0);
+  background: var(--mantle);
+  padding: 1rem 1.1rem;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.doc pre code {
+  color: var(--text);
+  font-size: inherit;
+}
+.doc pre code.language-mermaid {
+  color: var(--subtext0);
+}
+.doc blockquote {
+  border-left: 3px solid var(--mauve);
+  padding: 0.25rem 0 0.25rem 1rem;
+  color: var(--subtext0);
+}
+.doc table {
+  display: block;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.doc :where(th, td) {
+  border: 1px solid var(--surface0);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.doc th {
+  color: var(--text);
+  background: var(--mantle);
+}
+.doc hr {
+  margin: 2.5rem 0;
+  border-color: var(--surface0);
+}
+.doc details {
+  border: 1px solid var(--surface0);
+  padding: 0.5rem 1rem;
+}
+.doc summary {
+  cursor: pointer;
+  color: var(--text);
 }
 
 /* ---------- motion ---------- */
@@ -152,36 +353,17 @@
   width: 2px;
 }
 
-/* sections fade up as they scroll in (no JS) */
+/* scene panels fade up as they scroll in (no JS) */
 @supports (animation-timeline: view()) {
   @keyframes reveal {
-    from { opacity: 0; transform: translateY(16px); }
+    from { opacity: 0; transform: translateY(24px); }
     to { opacity: 1; transform: none; }
   }
   .reveal {
     animation: reveal linear both;
     animation-timeline: view();
-    animation-range: entry 0% entry 40%;
+    animation-range: entry 0% entry 35%;
   }
-}
-
-/* pipeline: a pixel travels the connectors */
-@keyframes pulse-travel {
-  from { left: -8px; }
-  to { left: 100%; }
-}
-.pulse-dot {
-  animation: pulse-travel 1s steps(8) infinite;
-  animation-delay: var(--d, 0s);
-}
-@keyframes stage-glow {
-  0%, 100% { border-color: var(--surface0); }
-  10%, 30% { border-color: var(--stage); }
-}
-.stage {
-  --stage: var(--sky);
-  animation: stage-glow 4s steps(4) infinite;
-  animation-delay: var(--d, 0s);
 }
 
 /* level meter bars in the demo */
@@ -195,6 +377,16 @@
 .meter-bar {
   transform-origin: bottom;
   transform: scaleY(0.15);
+}
+
+/* the scroll hint's arrow nudges down */
+@keyframes nudge {
+  0%, 100% { transform: none; }
+  50% { transform: translateY(4px); }
+}
+.nudge {
+  display: inline-block;
+  animation: nudge 1.6s steps(3) infinite;
 }
 
 /* flavor switch: a quick diagonal wipe (View Transitions) */
@@ -212,10 +404,10 @@
 }
 
 .pixel-canvas {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
-  image-rendering: pixelated;
 }
 .pixelated {
   image-rendering: pixelated;
@@ -225,8 +417,15 @@
 html.js .no-js-only {
   display: none;
 }
+/* the pixel bird flies into the home link; the field shows it when it lands */
+html.js [data-flies] {
+  opacity: 0;
+}
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
   *,
   *::before,
   *::after {
