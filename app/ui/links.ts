@@ -5,15 +5,17 @@ export const links = {
   releases: `${REPO}/releases`,
   issues: `${REPO}/issues`,
   newIssue: `${REPO}/issues/new/choose`,
+  issue: (n: number) => `${REPO}/issues/${n}`,
   license: `${REPO}/blob/main/LICENSE`,
-  docs: `${REPO}/blob/main/docs/README.md`,
-  troubleshooting: `${REPO}/blob/main/docs/README.md#troubleshooting`,
-  manualInstall: `${REPO}/blob/main/docs/README.md#manual-install`,
-  architecture: `${REPO}/blob/main/docs/ARCHITECTURE.md`,
-  models: `${REPO}/blob/main/docs/MODELS.md`,
-  privacy: `${REPO}/blob/main/docs/SECURITY_PRIVACY.md`,
-  philosophy: `${REPO}/blob/main/docs/PHILOSOPHY.md`,
   contributing: `${REPO}/blob/main/CONTRIBUTING.md`,
+  // the docs live on this site, rendered from the repo's docs/
+  docs: '/docs',
+  troubleshooting: '/docs#troubleshooting',
+  manualInstall: '/docs#manual-install',
+  architecture: '/docs/architecture',
+  models: '/docs/models',
+  privacy: '/docs/privacy',
+  philosophy: '/docs/philosophy',
 }
 
 export const install = {

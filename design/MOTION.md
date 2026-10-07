@@ -14,4 +14,16 @@ Based on how [omarchy.org](https://omarchy.org) moves (read from its shipped CSS
 | 08 | Flavor switch | `theme-split-wipe` + theme picker | Nav swatches switch between Catppuccin Mocha / Macchiato / Frappé / Latte with a wipe; saved in localStorage only | 200ms `cubic-bezier(.7,0,1,1)`; View Transitions API with a swap fallback |
 | 09 | Micro-interactions | 150–260ms transitions | Copy → "copied ✓" for 1.2s; buttons lift 1px; link underlines grow from the left | hover 150ms ease-out; press 90ms; transform 260ms `cubic-bezier(.2,0,0,1)` |
 
+## v2: scenes, after remix.run
+
+The home page became a run of full-height scenes, with motion borrowed from [remix.run](https://remix.run) and kept in pixels. 04 and 07 still apply. 02 and 06 are replaced by the rows below.
+
+| # | Name | What it does | Timing |
+|---|---|---|---|
+| 10 | Bird to home link | The pixel bird above the wordmark flies into the nav as you scroll the hero, shrinking as it goes, and becomes the home link. Scrolling back up flies it back | scrubbed by scroll: lands at 85% of the hero's first 55%; ease in-out; swoops down 8% of the viewport mid-flight; reduced motion: jumps at 50% |
+| 11 | Wordmark idles | The wordmark's color cycles through Catppuccin accents. It glitches on hover and on its own now and then, and pixels near the pointer shy away | accent every 2.6s with a 650ms blend; glitch 90–210ms, every 3.5–7.5s; push radius 6 cells; reduced motion: sky, still |
+| 12 | Transition element | Scroll past 45% of the hero and the wordmark's pixels fly off and re-form into the next scene's shape: bird, fn key, pipeline, terminal, lock, road, heart. Every scene change re-forms them | 900ms ease-out per pixel, up to 280ms stagger, a sideways swing on the way; reduced motion: shapes swap in place |
+| 13 | Shapes answer back | Holding F presses the fn key down half a cell and brightens it. The "how it works" tabs light their stage of the pipeline and dim the rest | follows the talk state; immediate on tab change |
+| 14 | Section index | Bottom left: the scenes, with a bar in the current scene's accent. ↑ and ↓ jump between scenes | bar 300ms; smooth scroll, instant with reduced motion |
+
 Not carried over from Omarchy: Plausible analytics (mockingbird's site has none) and the 20-theme random pick on first load (we default to Mocha, matching the TUI).

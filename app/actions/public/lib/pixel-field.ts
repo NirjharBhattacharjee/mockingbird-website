@@ -1,38 +1,58 @@
-// The pixel field: one grid that the background dots, the wordmark and the
-// pixel bird all snap to. The bottom edge is a level meter that idles quietly
-// and jumps while you "talk" (hold F). Moving the pointer lights nearby cells,
-// clicking sends out a square ripple, and the wordmark glitches on hover.
+// The pixel field: one fixed canvas behind the whole home page, on a grid of
+// square cells.
+//
+// - Background dots twinkle. The bottom edge is a level meter that idles in
+//   the hero and jumps anywhere on the page while you "talk" (hold F).
+// - The pointer lights nearby cells, a click sends out a square ripple.
+// - In the hero, a pool of pixels spells the "mockingbird" wordmark. It
+//   cycles color while idle, glitches when you hover it, and pixels shy away
+//   from the pointer. Scroll down and the same pixels fly off and re-form
+//   into each scene's shape (the transition element), and back again.
+// - The pixel bird flies up into the nav as you scroll and becomes the home
+//   link, then flies back down when you return to the top.
 
-import { onTalk, onTheme, prefersReducedMotion } from './events.ts'
-import { type BirdRole, type Palette, type RGB, mix, readPalette, rgb } from './palette.ts'
-import { FONT_ROWS, type FontCell, layout, measure } from './pixel-font.ts'
+import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
+import { type Palette, type RGB, bands, mix, readPalette, rgb } from './palette.ts'
+import { FONT_ROWS, layout, measure } from './pixel-font.ts'
+import { type Cell, buildShape, loadShapeFonts, sampleLogo } from './shapes.ts'
 
 const WORD = 'mockingbird'
 const WORD_COLS = measure(WORD)
-const BIRD_HALF_CELLS_WIDE = 40
+const MORPH_MS = 900
+/** how far through the hero (0-1) you scroll before the wordmark lets go */
+const WORD_UNTIL = 0.45
+const ACCENTS = ['sky', 'mauve', 'peach', 'green', 'red', 'lavender'] as const
+const ACCENT_MS = 2600
 
-export interface FieldOptions {
-  wordSlot?: HTMLElement | null
-  birdSlot?: HTMLElement | null
+interface FieldOptions {
   birdSrc?: string
-  /** share of rows the bottom level meter may reach; 0 turns it off */
-  horizon?: number
-  /** probability that a background cell is lit */
-  density?: number
   signal: AbortSignal
 }
 
-interface Box {
-  x: number
-  y: number
-  w: number
-  h: number
+interface Formation {
+  cells: (Cell & { letter?: number })[]
+  size: { w: number; h: number }
+  anchor: HTMLElement
 }
 
-interface BirdPixel {
+interface Particle {
+  /** where it was last drawn, px */
   x: number
   y: number
-  role: BirdRole
+  /** where its current flight started */
+  sx: number
+  sy: number
+  /** its color at the start of the flight, and as last drawn */
+  from: RGB
+  color: RGB
+  delay: number
+  /** sideways swing during a flight, px */
+  curl: number
+  /** offset from the pointer pushing it away, px */
+  px: number
+  py: number
+  /** a spare pixel the current shape doesn't use */
+  spare: boolean
 }
 
 interface Glitch {
@@ -40,14 +60,6 @@ interface Glitch {
   mode: 'dither' | 'shift'
   dx: number
   row: number
-}
-
-interface Spark {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  life: number
 }
 
 // Stable per-cell noise in [0, 1).
@@ -58,60 +70,33 @@ function hash(x: number, y: number, seed = 0): number {
 }
 
 const easeOut = (t: number) => 1 - (1 - t) ** 3
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** Grid cell size in px, chosen so the wordmark fits the viewport. */
-export function cellSize(): number {
+function cellSize(): number {
   let vw = Math.min(window.innerWidth, 1280)
   return Math.max(4, Math.min(10, Math.floor((vw - 40) / (WORD_COLS + 4))))
 }
 
-function sampleBird(img: HTMLImageElement): { w: number; h: number; pixels: BirdPixel[] } {
-  // Downsample the logo into half cells and sort each opaque pixel into one
-  // of the bird's facet colors by hue, so the bird recolors with the flavor.
-  let w = BIRD_HALF_CELLS_WIDE
-  let h = Math.round((w * img.naturalHeight) / img.naturalWidth)
-  let off = document.createElement('canvas')
-  off.width = w
-  off.height = h
-  let o = off.getContext('2d', { willReadFrequently: true })!
-  o.drawImage(img, 0, 0, w, h)
-  let data = o.getImageData(0, 0, w, h).data
-  let pixels: BirdPixel[] = []
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let i = (y * w + x) * 4
-      if (data[i + 3] < 120) continue
-      let r = data[i] / 255
-      let g = data[i + 1] / 255
-      let b = data[i + 2] / 255
-      let max = Math.max(r, g, b)
-      let min = Math.min(r, g, b)
-      let l = (max + min) / 2
-      let hue = 0
-      if (max !== min) {
-        let d = max - min
-        hue = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4
-        hue = (hue * 60 + 360) % 360
-      }
-      let role: BirdRole =
-        hue > 245 && hue < 320 ? 'mauve' : hue > 205 ? 'blue' : l > 0.62 ? 'sky' : l > 0.45 ? 'teal' : 'tealDeep'
-      pixels.push({ x, y, role })
-    }
-  }
-  return { w, h, pixels }
-}
-
-export function createPixelField(host: HTMLElement, options: FieldOptions) {
-  let { wordSlot = null, birdSlot = null, birdSrc, horizon = 0.2, density = 0.018, signal } = options
+export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let reduced = prefersReducedMotion()
+  let root = document.documentElement
 
   let canvas = document.createElement('canvas')
   canvas.className = 'pixel-canvas'
   canvas.setAttribute('aria-hidden', 'true')
-  host.prepend(canvas)
+  document.body.prepend(canvas)
   signal.addEventListener('abort', () => canvas.remove())
   let ctx = canvas.getContext('2d')!
+
+  let hero = document.getElementById('top')
+  let wordSlot = document.getElementById('wordmark-slot')
+  let birdSlot = document.getElementById('bird-slot')
+  let home = document.getElementById('home-slot')
+  let homeImg = home?.querySelector('img') ?? null
+  let sceneList = scenes()
 
   let W = 0
   let H = 0
@@ -120,81 +105,74 @@ export function createPixelField(host: HTMLElement, options: FieldOptions) {
   let cols = 0
   let rows = 0
   let palette: Palette = readPalette()
+  let logo: HTMLImageElement | null = null
+  let bird: ReturnType<typeof sampleLogo> | null = null
+
+  let formations = new Map<string, Formation>()
+  let particles: Particle[] = []
+  let active = ''
+  let morphAt = 0
+  // the pipeline stage the "how it works" tabs point at (Listen starts checked)
+  let highlight = 1
+  let pointer: { x: number; y: number } | null = null
+
   let heat = new Float32Array(0)
-  let avoid = new Uint8Array(0)
-  let word: FontCell[] = []
-  let wordBox: Box | null = null
-  let bird: BirdPixel[] = []
-  let birdBox: (Box & { beak: { x: number; y: number } }) | null = null
-  let birdSample: ReturnType<typeof sampleBird> | null = null
   let ripples: { x: number; y: number; at: number }[] = []
-  let sparks: Spark[] = []
+  let sparks: { x: number; y: number; vx: number; vy: number; life: number }[] = []
   let glitches = new Map<number, Glitch>()
   let level = 0
   let target = 0
   let recording = false
-  let introAt: number | null = reduced ? -1 : null
-  let running = false
-  let visible = true
+  let bootAt = 0
   let lastHover = 0
-  let nextAutoGlitch = performance.now() + 3000
+  let nextAutoGlitch = 0
+  let running = false
+  let drawQueued = false
 
-  function hostRect(el: HTMLElement): Box {
-    let hr = host.getBoundingClientRect()
-    let r = el.getBoundingClientRect()
-    return {
-      x: Math.round((r.left - hr.left) / C),
-      y: Math.round((r.top - hr.top) / C),
-      w: Math.round(r.width / C),
-      h: Math.round(r.height / C),
-    }
+  // ---------- layout ----------
+
+  function heroProgress() {
+    if (!hero) return 1
+    let r = hero.getBoundingClientRect()
+    return clamp01(-r.top / (r.height * 0.55))
   }
 
-  function placeArt() {
-    word = []
-    wordBox = null
-    bird = []
-    birdBox = null
+  function buildFormations() {
+    formations.clear()
     if (wordSlot) {
-      let s = hostRect(wordSlot)
-      let ox = s.x + Math.round((s.w - WORD_COLS) / 2)
-      let oy = s.y + Math.round((s.h - FONT_ROWS) / 2)
-      word = layout(WORD).map((c) => ({ ...c, x: c.x + ox, y: c.y + oy }))
-      wordBox = { x: ox, y: oy, w: WORD_COLS, h: FONT_ROWS }
+      let cells = layout(WORD).map((c) => ({ x: c.x, y: c.y, letter: c.letter, group: c.band, role: 'sky' as const }))
+      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, anchor: wordSlot })
     }
-    if (birdSlot && birdSample) {
-      let s = hostRect(birdSlot)
-      let bw = Math.ceil(birdSample.w / 2)
-      let bh = Math.ceil(birdSample.h / 2)
-      let ox = s.x + Math.round((s.w - bw) / 2)
-      let oy = s.y + Math.round((s.h - bh) / 2)
-      bird = birdSample.pixels.map((p) => ({ ...p, x: ox * 2 + p.x, y: oy * 2 + p.y }))
-      birdBox = { x: ox, y: oy, w: bw, h: bh, beak: { x: ox + bw - 1, y: oy + Math.round(bh * 0.24) } }
+    for (let scene of sceneList) {
+      let stage = scene.querySelector<HTMLElement>('[data-stage]')
+      let shape = scene.dataset.shape
+      if (!stage || !shape) continue
+      let r = stage.getBoundingClientRect()
+      let size = Math.max(8, Math.floor((Math.min(r.width, r.height) * 0.9) / C))
+      let cells = buildShape(shape, size, logo)
+      // shuffle, so a morph sends pixels criss-crossing like a flock
+      cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
+      formations.set(scene.id, { cells, size: { w: size, h: size }, anchor: stage })
+    }
+    let need = Math.max(0, ...[...formations.values()].map((f) => f.cells.length))
+    while (particles.length < need) {
+      let i = particles.length
+      particles.push({ x: -C, y: -C, sx: -C, sy: -C, from: palette.bg, color: palette.bg, delay: 0, curl: (hash(i, 1, 2) - 0.5) * 160, px: 0, py: 0, spare: true })
     }
   }
 
-  function buildAvoid() {
-    avoid = new Uint8Array(cols * rows)
-    let mark = (b: Box, pad: number) => {
-      for (let y = b.y - pad; y < b.y + b.h + pad; y++) {
-        for (let x = b.x - pad; x < b.x + b.w + pad; x++) {
-          if (x >= 0 && y >= 0 && x < cols && y < rows) avoid[y * cols + x] = 1
-        }
-      }
-    }
-    if (wordBox) mark(wordBox, 2)
-    if (birdBox) mark(birdBox, 1)
-    host.querySelectorAll<HTMLElement>('[data-pixel-avoid]').forEach((el) => mark(hostRect(el), 1))
+  function origin(f: Formation) {
+    let r = f.anchor.getBoundingClientRect()
+    return { x: Math.round(r.left + (r.width - f.size.w * C) / 2), y: Math.round(r.top + (r.height - f.size.h * C) / 2) }
   }
 
   function resize() {
-    let r = host.getBoundingClientRect()
     let dpr = Math.min(window.devicePixelRatio || 1, 2)
     C = cellSize()
     gap = C >= 8 ? 2 : 1
-    document.documentElement.style.setProperty('--px', `${C}px`)
-    W = Math.ceil(r.width)
-    H = Math.ceil(r.height)
+    root.style.setProperty('--px', `${C}px`)
+    W = root.clientWidth
+    H = window.innerHeight
     cols = Math.ceil(W / C)
     rows = Math.ceil(H / C)
     canvas.width = W * dpr
@@ -203,30 +181,63 @@ export function createPixelField(host: HTMLElement, options: FieldOptions) {
     canvas.style.height = `${H}px`
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     heat = new Float32Array(cols * rows)
-    placeArt()
-    buildAvoid()
-    if (!running) draw(performance.now())
+    buildFormations()
+    requestDraw()
+  }
+
+  // ---------- morphing ----------
+
+  /** Which formation the pixels should be in right now. */
+  function wanted(p: number) {
+    let i = currentSceneIndex(sceneList)
+    if (i === 0 && p >= WORD_UNTIL) i = 1
+    return sceneList[i]?.id ?? 'top'
+  }
+
+  function morphTo(key: string, now: number) {
+    // spare pixels set off from somewhere inside the shape they leave
+    let old = formations.get(active)
+    let o = old && origin(old)
+    particles.forEach((pt, i) => {
+      if (pt.spare && old && o) {
+        pt.x = o.x + hash(i, 3) * old.size.w * C
+        pt.y = o.y + hash(i, 4) * old.size.h * C
+      }
+      pt.sx = pt.x
+      pt.sy = pt.y
+      pt.from = pt.color
+      pt.delay = reduced ? 0 : hash(i, 7) * 280
+    })
+    active = key
+    morphAt = now
+  }
+
+  // The wordmark's first appearance: pixels stream in from the upper right.
+  function intro(now: number) {
+    let f = formations.get('top')
+    active = 'top'
+    morphAt = now
+    if (!f) return
+    let o = origin(f)
+    particles.forEach((pt, i) => {
+      let c = f.cells[i]
+      if (!c) return
+      pt.sx = o.x + (c.x + 20 + hash(c.x, c.y, 6) * 40) * C
+      pt.sy = o.y + (c.y - 8 - hash(c.x, c.y, 1) * 30) * C
+      pt.from = palette.bg
+      pt.delay = 250 + c.x * 12 + hash(c.x, c.y, 5) * 200
+    })
   }
 
   // ---------- interaction ----------
-
-  function cellAt(e: PointerEvent) {
-    let r = host.getBoundingClientRect()
-    return { x: Math.floor((e.clientX - r.left) / C), y: Math.floor((e.clientY - r.top) / C) }
-  }
-
-  function inWord(c: { x: number; y: number }) {
-    return Boolean(wordBox && c.x >= wordBox.x && c.x < wordBox.x + wordBox.w && c.y >= wordBox.y && c.y < wordBox.y + wordBox.h)
-  }
 
   function warm(cx: number, cy: number, radius: number, strength: number) {
     for (let y = cy - radius; y <= cy + radius; y++) {
       for (let x = cx - radius; x <= cx + radius; x++) {
         if (x < 0 || y < 0 || x >= cols || y >= rows) continue
-        let i = y * cols + x
-        if (avoid[i]) continue
         let d = Math.hypot(x - cx, y - cy) / radius
         if (d > 1 || Math.random() > (1 - d) * strength) continue
+        let i = y * cols + x
         heat[i] = Math.max(heat[i], 0.55 + 0.45 * (1 - d))
       }
     }
@@ -243,35 +254,62 @@ export function createPixelField(host: HTMLElement, options: FieldOptions) {
     }
   }
 
+  function overWord(x: number, y: number) {
+    let f = formations.get('top')
+    if (active !== 'top' || !f) return false
+    let o = origin(f)
+    return x >= o.x && y >= o.y && x < o.x + f.size.w * C && y < o.y + f.size.h * C
+  }
+
   if (!reduced) {
-    host.addEventListener(
+    window.addEventListener(
       'pointermove',
       (e) => {
-        let c = cellAt(e)
-        if (inWord(c)) {
-          let now = performance.now()
+        pointer = { x: e.clientX, y: e.clientY }
+        let now = performance.now()
+        if (overWord(e.clientX, e.clientY)) {
           if (now - lastHover > 70) {
             startGlitch(now)
             lastHover = now
           }
           return
         }
-        warm(c.x, c.y, Math.max(4, Math.round(56 / C)), 0.6)
+        warm(Math.floor(e.clientX / C), Math.floor(e.clientY / C), Math.max(4, Math.round(56 / C)), 0.6)
       },
       { signal },
     )
-    host.addEventListener(
+    document.addEventListener(
+      'pointerout',
+      (e) => {
+        if (!e.relatedTarget) pointer = null
+      },
+      { signal },
+    )
+    window.addEventListener(
       'pointerdown',
       (e) => {
-        if (e.target instanceof Element && e.target.closest('a, button, input')) return
-        let c = cellAt(e)
+        if (e.target instanceof Element && e.target.closest('a, button, input, label, .panel')) return
         let now = performance.now()
-        ripples.push({ x: c.x, y: c.y, at: now }, { x: c.x, y: c.y, at: now + 140 })
-        if (inWord(c)) startGlitch(now, true)
+        let x = Math.floor(e.clientX / C)
+        let y = Math.floor(e.clientY / C)
+        ripples.push({ x, y, at: now }, { x, y, at: now + 140 })
+        if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
     )
   }
+
+  // The "how it works" tabs light up their stage of the pipeline shape.
+  document.addEventListener(
+    'change',
+    (e) => {
+      let input = e.target as HTMLInputElement
+      if (input.name !== 'how') return
+      highlight = Number(input.value) + 1
+      requestDraw()
+    },
+    { signal },
+  )
 
   // ---------- drawing ----------
 
@@ -280,193 +318,270 @@ export function createPixelField(host: HTMLElement, options: FieldOptions) {
     ctx.fillRect(x * C, y * C, C - gap, C - gap)
   }
 
-  function meterHeight(x: number, t: number) {
+  function meterHeight(x: number, t: number, show: number) {
     // Two slow waves for idle breathing, plus faster speech-like jitter that
     // takes over as the level rises.
     let idle = 0.45 + 0.3 * Math.sin(x * 0.11 + t * 0.6) * Math.sin(x * 0.037 - t * 0.35)
     let talk = Math.abs(Math.sin(x * 0.29 + t * 7.3) * Math.sin(x * 0.13 - t * 4.1) + 0.6 * Math.sin(x * 0.71 + t * 11))
     let envelope = Math.sin((Math.PI * (x + 0.5)) / cols) ** 0.6
-    return rows * horizon * envelope * (idle * (1 - level) + (0.35 + 0.9 * talk) * level)
+    return rows * 0.22 * envelope * (idle * (1 - level) * show + (0.35 + 0.9 * talk) * level)
   }
 
-  function draw(now: number) {
-    let t = now / 1000
-    ctx.clearRect(0, 0, W, H)
+  function drawBackground(now: number, p: number) {
+    let t = reduced ? 0 : now / 1000
     let dim = rgb(palette.dim)
     let mid = rgb(palette.mid)
     let lit = rgb(palette.lit)
     let crest = rgb(palette.crest)
+    let show = 1 - clamp01(p * 1.6)
 
-    // background sprinkle + level meter
     for (let x = 0; x < cols; x++) {
-      let mh = horizon ? meterHeight(x, reduced ? 0 : t) : 0
+      let mh = meterHeight(x, t, show)
       for (let y = 0; y < rows; y++) {
-        let i = y * cols + x
-        if (avoid[i]) continue
         let r = hash(x, y)
         let depth = rows - y
         let on = false
         let tone = 0
-        if (horizon && depth <= mh + 1) {
-          let p = 1 - (depth - 1) / Math.max(mh, 1)
-          on = r < 0.18 + 0.78 * p
-          tone = depth > mh - 2 && level > 0.2 ? 2 : p > 0.75 ? 1 : 0
+        if (depth <= mh + 1 && mh > 0.5) {
+          let q = 1 - (depth - 1) / Math.max(mh, 1)
+          on = r < 0.18 + 0.78 * q
+          tone = depth > mh - 2 && level > 0.2 ? 2 : q > 0.75 ? 1 : 0
         } else {
-          on = r < density
+          on = r < 0.018
           if (on && !reduced && hash(x, y, 3) < 0.25) on = Math.sin(t * (0.4 + hash(x, y, 4)) + r * 40) > -0.3
           tone = hash(x, y, 2) > 0.92 ? 1 : 0
         }
-        if (!on) continue
-        square(x, y, tone === 2 ? (recording ? crest : lit) : tone === 1 ? mid : dim)
+        if (on) square(x, y, tone === 2 ? (recording ? crest : lit) : tone === 1 ? mid : dim)
       }
     }
 
-    if (!reduced) {
-      // ripples: expanding square rings, dithered
-      for (let rp of ripples) {
-        let radius = Math.floor((now - rp.at) / 38)
-        if (radius < 0) continue
-        for (let y = rp.y - radius; y <= rp.y + radius; y++) {
-          for (let x = rp.x - radius; x <= rp.x + radius; x++) {
-            if (Math.max(Math.abs(x - rp.x), Math.abs(y - rp.y)) !== radius) continue
-            if (x < 0 || y < 0 || x >= cols || y >= rows || (x + y) % 2) continue
-            let i = y * cols + x
-            if (!avoid[i]) heat[i] = Math.max(heat[i], 0.95 - radius * 0.035)
+    if (reduced) return
+    // ripples: expanding square rings, dithered
+    for (let rp of ripples) {
+      let radius = Math.floor((now - rp.at) / 38)
+      if (radius < 0) continue
+      for (let y = rp.y - radius; y <= rp.y + radius; y++) {
+        for (let x = rp.x - radius; x <= rp.x + radius; x++) {
+          if (Math.max(Math.abs(x - rp.x), Math.abs(y - rp.y)) !== radius) continue
+          if (x < 0 || y < 0 || x >= cols || y >= rows || (x + y) % 2) continue
+          heat[y * cols + x] = Math.max(heat[y * cols + x], 0.95 - radius * 0.035)
+        }
+      }
+    }
+    ripples = ripples.filter((rp) => now - rp.at < 38 * 22)
+
+    // sparks: notes leaving the bird's beak while you talk
+    for (let s of sparks) {
+      s.x += s.vx
+      s.y += s.vy
+      s.life--
+      let x = Math.round(s.x / C)
+      let y = Math.round(s.y / C)
+      if (x >= 0 && y >= 0 && x < cols && y < rows) heat[y * cols + x] = Math.max(heat[y * cols + x], s.life / 40)
+    }
+    sparks = sparks.filter((s) => s.life > 0)
+
+    for (let i = 0; i < heat.length; i++) {
+      let h = heat[i]
+      if (h < 0.1) continue
+      square(i % cols, Math.floor(i / cols), h > 0.85 ? crest : h > 0.6 ? lit : h > 0.35 ? mid : dim)
+      heat[i] = h * 0.93
+    }
+  }
+
+  /** The wordmark's band colors right now: the accent cycles while idle. */
+  function wordBands(now: number) {
+    if (reduced) return bands(palette, palette.sky)
+    let phase = now / ACCENT_MS
+    let i = Math.floor(phase)
+    let fade = clamp01((phase - i - 0.75) * 4)
+    let a = palette[ACCENTS[i % ACCENTS.length]]
+    let b = palette[ACCENTS[(i + 1) % ACCENTS.length]]
+    return bands(palette, mix(a, b, fade))
+  }
+
+  function drawParticles(now: number) {
+    let f = formations.get(active)
+    if (!f) return
+    let o = origin(f)
+    let isWord = active === 'top'
+    let wb = isWord ? wordBands(now) : null
+    let pressed = recording && f.anchor.closest('#demo') ? 1 : 0
+    let size = isWord ? C : C - gap
+    let push = 6 * C
+    for (let [letter, g] of glitches) if (g.until < now) glitches.delete(letter)
+
+    particles.forEach((pt, i) => {
+      let c = f.cells[i]
+      let k = reduced ? 1 : easeOut(clamp01((now - morphAt - pt.delay) / MORPH_MS))
+      let tx = c ? o.x + c.x * C : pt.sx
+      let ty = c ? o.y + (c.y + pressed * 0.5) * C : pt.sy
+      let goal: RGB = palette.bg
+      if (c) {
+        goal = wb ? wb[c.group] : palette[c.role]
+        if (highlight && c.group && f.anchor.closest('#how') && c.group !== highlight) goal = mix(goal, palette.bg, 0.6)
+        if (pressed) goal = mix(goal, palette.crest, 0.35)
+        if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
+      }
+      let color = k === 1 ? goal : mix(pt.from, goal, k)
+      let swing = Math.sin(Math.PI * k) * pt.curl
+      let x = lerp(pt.sx, tx, k) + swing
+      let y = lerp(pt.sy, ty, k) - swing * 0.4
+
+      // shy away from the pointer
+      if (!reduced) {
+        let ax = 0
+        let ay = 0
+        if (pointer && c) {
+          let dx = x - pointer.x
+          let dy = y - pointer.y
+          let d = Math.hypot(dx, dy)
+          if (d < push && d > 0) {
+            ax = (dx / d) * (push - d) * 0.5
+            ay = (dy / d) * (push - d) * 0.5
           }
         }
+        pt.px += (ax - pt.px) * 0.2
+        pt.py += (ay - pt.py) * 0.2
+        x += pt.px
+        y += pt.py
       }
-      ripples = ripples.filter((rp) => now - rp.at < 38 * 22)
 
-      // sparks: notes leaving the bird's beak while you talk
-      for (let s of sparks) {
-        s.x += s.vx
-        s.y += s.vy
-        s.life--
-        let x = Math.round(s.x)
-        let y = Math.round(s.y)
-        if (x >= 0 && y >= 0 && x < cols && y < rows) heat[y * cols + x] = Math.max(heat[y * cols + x], s.life / 40)
-      }
-      sparks = sparks.filter((s) => s.life > 0)
+      pt.x = x
+      pt.y = y
+      pt.color = color
+      pt.spare = !c
+      if (!c && k === 1) return
 
-      for (let i = 0; i < heat.length; i++) {
-        let h = heat[i]
-        if (h < 0.1) continue
-        square(i % cols, Math.floor(i / cols), h > 0.85 ? crest : h > 0.6 ? lit : h > 0.35 ? mid : dim)
-        heat[i] = h * 0.93
-      }
-    }
-
-    // intro: pixels stream in from the upper right and settle into place
-    let intro = introAt === null ? 0 : introAt < 0 ? 99 : (now - introAt) / 1000
-
-    if (bird.length) {
-      let hc = C / 2
-      let hg = gap / 2
-      let left = bird[0].x
-      for (let p of bird) {
-        let x = p.x
-        let y = p.y
-        if (intro < 1.6) {
-          let delay = (p.x - left) * 0.006 + hash(p.x, p.y, 7) * 0.25
-          let k = easeOut(clamp01((intro - delay) / 0.7))
-          if (k <= 0) continue
-          x = Math.round(p.x + (1 - k) * (30 + hash(p.x, p.y, 8) * 70))
-          y = Math.round(p.y - (1 - k) * (20 + hash(p.x, p.y, 9) * 50))
-        }
-        let color: RGB = palette[p.role]
-        if (!reduced && hash(p.x, p.y, Math.floor(t * 2)) > 0.985) color = palette.crest
-        ctx.fillStyle = rgb(color)
-        ctx.fillRect(x * hc, y * hc, hc - hg, hc - hg)
-      }
-    }
-
-    if (word.length && wordBox) {
-      for (let [letter, g] of glitches) if (g.until < now) glitches.delete(letter)
-      if (!reduced && intro > 2 && now > nextAutoGlitch) {
-        startGlitch(now)
-        nextAutoGlitch = now + 3500 + Math.random() * 4000
-      }
-      for (let c of word) {
-        let x = c.x
-        let y = c.y
-        let color = palette.bands[c.band]
+      if (c && 'letter' in c && c.letter !== undefined) {
         let g = glitches.get(c.letter)
-        if (g) {
-          if (g.mode === 'dither' && (c.x + c.y) % 2) continue
-          if (g.mode === 'shift' && c.y >= g.row) x += g.dx
+        if (g && k === 1) {
+          if (g.mode === 'dither' && (c.x + c.y) % 2) return
+          if (g.mode === 'shift' && c.y >= g.row) x += g.dx * C
           color = mix(color, palette.crest, 0.4)
         }
-        if (intro < 1.8) {
-          let delay = 0.25 + (c.x - wordBox.x) * 0.012 + hash(c.x, c.y, 5) * 0.2
-          let k = easeOut(clamp01((intro - delay) / 0.75))
-          if (k <= 0) continue
-          x = Math.round(c.x + (1 - k) * (20 + hash(c.x, c.y, 6) * 40))
-          y = Math.round(c.y - (1 - k) * (8 + hash(c.x, c.y, 1) * 30))
-        }
-        ctx.fillStyle = rgb(color)
-        ctx.fillRect(x * C, y * C, C, C)
       }
+      ctx.fillStyle = rgb(color)
+      ctx.fillRect(Math.round(x), Math.round(y), size, size)
+    })
+  }
+
+  // The bird sits above the wordmark in the hero, and flies into the nav's
+  // home link as you scroll. The nav's own <img> takes over once it lands.
+  function drawBird(now: number, p: number) {
+    if (!bird || !birdSlot || !home || !homeImg) return
+    let k = reduced ? (p < 0.5 ? 0 : 1) : easeInOut(clamp01(p / 0.85))
+    home.style.opacity = k >= 1 ? '1' : '0'
+    if (k >= 1) return
+
+    let a = birdSlot.getBoundingClientRect()
+    let b = homeImg.getBoundingClientRect()
+    let s0 = C / 2
+    let s1 = b.height / bird.h
+    let s = lerp(s0, s1, k)
+    // the hero scrolls away under it, so it keeps clear of the top edge,
+    // then swoops down a little on its way to the nav
+    let x = lerp(a.left + (a.width - bird.w * s0) / 2, b.left, k)
+    let y = lerp(Math.max(a.top + (a.height - bird.h * s0) / 2, b.bottom + C), b.top, k) + Math.sin(Math.PI * k) * H * 0.08
+    let g = s >= 3 ? gap / 2 : 0
+    let intro = reduced ? 99 : (now - bootAt) / 1000
+
+    for (let c of bird.cells) {
+      let cx = c.x
+      let cy = c.y
+      if (intro < 1.6) {
+        let wait = c.x * 0.006 + hash(c.x, c.y, 7) * 0.25
+        let q = easeOut(clamp01((intro - wait) / 0.7))
+        if (q <= 0) continue
+        cx += (1 - q) * (30 + hash(c.x, c.y, 8) * 70)
+        cy -= (1 - q) * (20 + hash(c.x, c.y, 9) * 50)
+      }
+      let color = palette[c.role]
+      if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
+      ctx.fillStyle = rgb(color)
+      ctx.fillRect(x + cx * s, y + cy * s, s - g, s - g)
     }
+
+    if (recording && k < 0.2 && Math.random() < 0.45) {
+      sparks.push({
+        x: x + bird.w * s,
+        y: y + bird.h * s * 0.24,
+        vx: (0.25 + Math.random() * 0.35) * C,
+        vy: (-0.12 - Math.random() * 0.3) * C,
+        life: 30 + Math.random() * 20,
+      })
+    }
+  }
+
+  function draw(now: number) {
+    ctx.clearRect(0, 0, W, H)
+    let p = heroProgress()
+    let key = wanted(p)
+    if (key !== active) morphTo(key, now)
+
+    if (!reduced && active === 'top' && now - bootAt > 2000 && now > nextAutoGlitch) {
+      startGlitch(now)
+      nextAutoGlitch = now + 3500 + Math.random() * 4000
+    }
+    drawBackground(now, p)
+    drawParticles(now)
+    drawBird(now, p)
   }
 
   function frame(now: number) {
     if (!running || signal.aborted) return
     level += (target - level) * (target > level ? 0.18 : 0.06)
-    if (recording && birdBox && Math.random() < 0.45) {
-      sparks.push({
-        x: birdBox.beak.x + 1,
-        y: birdBox.beak.y,
-        vx: 0.25 + Math.random() * 0.35,
-        vy: -0.12 - Math.random() * 0.3,
-        life: 30 + Math.random() * 20,
-      })
-    }
     draw(now)
     requestAnimationFrame(frame)
   }
 
-  function start() {
-    if (running || reduced || !visible) return
-    running = true
-    requestAnimationFrame(frame)
+  // With reduced motion nothing animates: the canvas redraws only when you
+  // scroll, resize or change the flavor.
+  function requestDraw() {
+    if (running || drawQueued) return
+    drawQueued = true
+    requestAnimationFrame((now) => {
+      drawQueued = false
+      draw(now)
+    })
   }
 
-  let io = new IntersectionObserver(([entry]) => {
-    visible = entry.isIntersecting
-    if (visible) start()
-    else running = false
-  })
-  io.observe(host)
-  let ro = new ResizeObserver(() => resize())
-  ro.observe(host)
-  signal.addEventListener('abort', () => {
-    io.disconnect()
-    ro.disconnect()
-    running = false
-  })
+  window.addEventListener('scroll', requestDraw, { passive: true, signal })
+  window.addEventListener('resize', resize, { signal })
+  signal.addEventListener('abort', () => (running = false))
 
   onTheme(() => {
     palette = readPalette()
-    if (!running) draw(performance.now())
+    requestDraw()
   }, signal)
   onTalk((state) => {
     recording = state === 'listening'
     target = recording ? 1 : 0
+    if (reduced) {
+      level = target
+      requestDraw()
+    }
   }, signal)
 
-  function boot() {
+  async function boot() {
+    await loadShapeFonts()
+    if (signal.aborted) return
+    if (logo) bird = sampleLogo(logo, 40)
     resize()
-    if (introAt === null) introAt = performance.now()
-    start()
+    bootAt = performance.now()
+    if (reduced) return requestDraw()
+    intro(bootAt)
+    running = true
+    requestAnimationFrame(frame)
   }
 
-  if (birdSrc && birdSlot) {
+  if (birdSrc) {
     let img = new Image()
     img.onload = () => {
-      birdSample = sampleBird(img)
+      logo = img
       boot()
     }
-    img.onerror = boot
+    img.onerror = () => boot()
     img.src = birdSrc
   } else {
     boot()

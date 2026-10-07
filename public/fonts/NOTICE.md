@@ -1,8 +1,7 @@
 # Fonts
 
-Both fonts are self-hosted so the site makes no third-party requests. Both are under the SIL Open Font License 1.1.
+Self-hosted so the site makes no third-party requests.
 
-- Geist, by Vercel: https://github.com/vercel/geist-font
-- JetBrains Mono, by JetBrains: https://github.com/JetBrains/JetBrainsMono
+- JetBrains Mono Nerd Font: JetBrains Mono by JetBrains (https://github.com/JetBrains/JetBrainsMono), patched with icons by Nerd Fonts (https://github.com/ryanoasis/nerd-fonts). SIL Open Font License 1.1.
 
-Files are the latin variable-weight builds from Fontsource.
+The files are subsets of the Nerd Fonts release build: Regular, Bold and ExtraBold cut to Latin and common symbols, and one icon file cut to the icon ranges. Browsers fetch the icon file only when a page shows an icon.

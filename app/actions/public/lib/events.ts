@@ -26,9 +26,29 @@ export function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-/** Keyboard shortcuts shouldn't fire while someone is typing in a field. */
-export function isTypingTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable]'))
+/** The home page's scenes, top to bottom. */
+export function scenes(): HTMLElement[] {
+  return [...document.querySelectorAll<HTMLElement>('[data-scene]')]
+}
+
+/** The scene you're reading: the last one whose top has passed 45% of the viewport. */
+export function currentSceneIndex(list: HTMLElement[]): number {
+  let line = window.innerHeight * 0.45
+  let index = 0
+  list.forEach((scene, i) => {
+    if (scene.getBoundingClientRect().top <= line) index = i
+  })
+  return index
+}
+
+/**
+ * Whether a key press is free for the page's shortcuts: no Cmd, Ctrl or Alt
+ * (those belong to the browser), and not typed into a text field.
+ */
+export function isPageShortcut(e: KeyboardEvent): boolean {
+  if (e.metaKey || e.ctrlKey || e.altKey) return false
+  let target = e.target
+  return !(target instanceof Element && target.closest('input:not([type=radio], [type=checkbox]), textarea, select, [contenteditable]'))
 }
 
 export function storage(key: string) {

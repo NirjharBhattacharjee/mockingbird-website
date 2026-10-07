@@ -7,6 +7,8 @@ export interface DocumentProps {
   children?: RemixNode
   title?: string
   description?: string
+  /** path for the canonical URL, e.g. "/docs/philosophy" */
+  path?: string
 }
 
 export const SITE_URL = 'https://mockingbirdvoice.org'
@@ -17,7 +19,7 @@ const DEFAULT_DESCRIPTION =
 
 export function Document(handle: Handle<DocumentProps>) {
   return () => {
-    let { children, title = DEFAULT_TITLE, description = DEFAULT_DESCRIPTION } = handle.props
+    let { children, title = DEFAULT_TITLE, description = DEFAULT_DESCRIPTION, path = "/" } = handle.props
     let { href, importMap, preloads } = scriptEntry
 
     return (
@@ -28,15 +30,15 @@ export function Document(handle: Handle<DocumentProps>) {
           <title>{title}</title>
           <meta name="description" content={description} />
           <meta name="theme-color" content="#11111b" />
-          <link rel="canonical" href={`${SITE_URL}/`} />
+          <link rel="canonical" href={`${SITE_URL}${path}`} />
           <meta property="og:type" content="website" />
-          <meta property="og:url" content={`${SITE_URL}/`} />
+          <meta property="og:url" content={`${SITE_URL}${path}`} />
           <meta property="og:site_name" content="mockingbird" />
           <meta property="og:title" content={title} />
           <meta property="og:description" content={description} />
           <link rel="icon" type="image/png" href="/brand/logo.png" />
-          <link rel="preload" href="/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
-          <link rel="preload" href="/fonts/geist-latin-wght-normal.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+          <link rel="preload" href="/fonts/jetbrains-mono-nerd-regular.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
+          <link rel="preload" href="/fonts/jetbrains-mono-nerd-extrabold.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
           <link rel="stylesheet" href="/styles.css" />
           {/* blocking on purpose: sets the saved flavor and grid size before first paint */}
           <script src="/theme-init.js"></script>
