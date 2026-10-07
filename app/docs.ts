@@ -60,11 +60,16 @@ export function rewriteHref(href: string): string {
 
 export function renderMarkdown(markdown: string): Pick<Doc, 'html' | 'toc'> {
   let toc: Doc['toc'] = []
+  let seen = new Map<string, number>()
   let html = Bun.markdown
     .html(markdown)
     .replace(/<h([1-4])>([\s\S]*?)<\/h\1>/g, (_, level: string, inner: string) => {
       let text = stripTags(inner)
-      let id = slugify(text)
+      // a repeated heading gets -1, -2, ... like on GitHub
+      let base = slugify(text)
+      let n = seen.get(base) ?? 0
+      seen.set(base, n + 1)
+      let id = n ? `${base}-${n}` : base
       if (level === '2') toc.push({ id, text })
       return `<h${level} id="${id}"><a class="anchor" href="#${id}" aria-hidden="true" tabindex="-1">#</a>${inner}</h${level}>`
     })
