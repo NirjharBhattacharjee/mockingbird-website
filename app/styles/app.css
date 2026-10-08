@@ -130,7 +130,7 @@
 /* see-through enough for the scene's shape to read around it (the field
    dims pixels behind it); the top edge and glow pick up the scene's hue */
 @utility panel {
-  @apply border border-surface0 bg-[color-mix(in_oklab,var(--mantle),transparent_18%)] p-6 backdrop-blur-md sm:p-8;
+  @apply border border-surface0 bg-[color-mix(in_oklab,var(--mantle),transparent_40%)] p-6 backdrop-blur-md sm:p-8;
   border-top-color: var(--hue, var(--surface0));
   box-shadow: 0 0 48px -12px color-mix(in oklab, var(--hue, transparent), transparent 70%);
   /* the faintest text tier drops under 4.5:1 over the pixels; lift it */
