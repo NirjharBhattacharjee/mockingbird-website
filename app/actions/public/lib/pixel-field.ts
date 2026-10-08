@@ -21,7 +21,8 @@ const WORD_COLS = measure(WORD)
 const MORPH_MS = 900
 /** how far through the hero (0-1) you scroll before the wordmark lets go */
 const WORD_UNTIL = 0.45
-const ACCENTS = ['sky', 'mauve', 'peach', 'green', 'red', 'lavender'] as const
+/** the wordmark cycles through the bird's own colors, ordered so neighbors blend */
+const ACCENTS = ['sky', 'teal', 'blue', 'lavender', 'mauve'] as const
 const ACCENT_MS = 2600
 
 interface FieldOptions {
@@ -389,15 +390,18 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
   }
 
-  /** The wordmark's band colors right now: the accent cycles while idle. */
+  /**
+   * Each letter's band colors right now. The accent cycles while idle, and
+   * each new color passes through the word left to right, like a voice.
+   */
   function wordBands(now: number) {
-    if (reduced) return bands(palette, palette.sky)
+    if (reduced) return Array.from(WORD, () => bands(palette, palette.sky))
     let phase = now / ACCENT_MS
     let i = Math.floor(phase)
-    let fade = clamp01((phase - i - 0.75) * 4)
     let a = palette[ACCENTS[i % ACCENTS.length]]
     let b = palette[ACCENTS[(i + 1) % ACCENTS.length]]
-    return bands(palette, mix(a, b, fade))
+    // the pass takes the last quarter of each cycle, letters 0.015 apart
+    return Array.from(WORD, (_, letter) => bands(palette, mix(a, b, clamp01((phase - i - 0.75 - letter * 0.015) * 8))))
   }
 
   function drawParticles(now: number) {
@@ -418,7 +422,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let ty = c ? o.y + (c.y + pressed * 0.5) * C : pt.sy
       let goal: RGB = palette.bg
       if (c) {
-        goal = wb ? wb[c.group] : palette[c.role]
+        goal = wb && c.letter !== undefined ? wb[c.letter][c.group] : palette[c.role]
         if (highlight && c.group && f.anchor.closest('#how') && c.group !== highlight) goal = mix(goal, palette.bg, 0.6)
         if (pressed) goal = mix(goal, palette.crest, 0.35)
         if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
