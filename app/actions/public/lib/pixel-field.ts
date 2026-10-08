@@ -177,8 +177,6 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let motes: Mote[] = Array.from({ length: 240 }, () => ({ x: 0, y: 0, vx: 0, vy: 0 }))
   let diveFrames = new Map<string, BirdCell<Role>[]>()
   let lastP = 0
-  // the Fn key is being held down with the pointer
-  let keyHeld = false
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -422,13 +420,6 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       },
       { signal },
     )
-    let release = () => {
-      if (!keyHeld) return
-      keyHeld = false
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }))
-    }
-    window.addEventListener('pointerup', release, { signal })
-    window.addEventListener('pointercancel', release, { signal })
     document.addEventListener(
       'pointerout',
       (e) => {
@@ -447,21 +438,40 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         splash(x, y, 3)
         let b = birdBox
         if (b && e.clientX >= b.x && e.clientX < b.x + b.w && e.clientY >= b.y && e.clientY < b.y + b.h) flutter(now)
-        // pressing the Fn key is holding F: the scripted demo, no microphone
-        let key = formations.get('demo')
-        if (active === 'demo' && key) {
-          let r = key.anchor.getBoundingClientRect()
-          let reach = (key.size.w * key.cell) / 2
-          if (Math.abs(e.clientX - (r.left + r.width / 2)) < reach && Math.abs(e.clientY - (r.top + r.height / 2)) < reach) {
-            keyHeld = true
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
-          }
-        }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
     )
   }
+
+  // Pressing the Fn key is holding F: the scripted demo, no microphone. It's
+  // an interaction, not an animation, so it works with reduced motion too.
+  // Only the pointer that pressed it lets go, and a touch press holds the
+  // key still the way hovering does.
+  let keyPointer: number | null = null
+  window.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.target instanceof Element && e.target.closest('a, button, input, label, .panel')) return
+      let key = formations.get('demo')
+      if (active !== 'demo' || !key || keyPointer !== null) return
+      let r = key.anchor.getBoundingClientRect()
+      let reach = (key.size.w * key.cell) / 2
+      if (Math.abs(e.clientX - (r.left + r.width / 2)) >= reach || Math.abs(e.clientY - (r.top + r.height / 2)) >= reach) return
+      keyPointer = e.pointerId
+      pointer = { x: e.clientX, y: e.clientY }
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
+    },
+    { signal },
+  )
+  let release = (e: PointerEvent) => {
+    if (e.pointerId !== keyPointer) return
+    keyPointer = null
+    if (e.pointerType !== 'mouse') pointer = null
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }))
+  }
+  window.addEventListener('pointerup', release, { signal })
+  window.addEventListener('pointercancel', release, { signal })
 
   // The "how it works" tabs light up their stage of the pipeline shape.
   document.addEventListener(
