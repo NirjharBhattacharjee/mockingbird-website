@@ -177,6 +177,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let motes: Mote[] = Array.from({ length: 240 }, () => ({ x: 0, y: 0, vx: 0, vy: 0 }))
   let diveFrames = new Map<string, BirdCell<Role>[]>()
   let lastP = 0
+  // the Fn key is being held down with the pointer
+  let keyHeld = false
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -420,6 +422,13 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       },
       { signal },
     )
+    let release = () => {
+      if (!keyHeld) return
+      keyHeld = false
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }))
+    }
+    window.addEventListener('pointerup', release, { signal })
+    window.addEventListener('pointercancel', release, { signal })
     document.addEventListener(
       'pointerout',
       (e) => {
@@ -438,6 +447,16 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         splash(x, y, 3)
         let b = birdBox
         if (b && e.clientX >= b.x && e.clientX < b.x + b.w && e.clientY >= b.y && e.clientY < b.y + b.h) flutter(now)
+        // pressing the Fn key is holding F: the scripted demo, no microphone
+        let key = formations.get('demo')
+        if (active === 'demo' && key) {
+          let r = key.anchor.getBoundingClientRect()
+          let reach = (key.size.w * key.cell) / 2
+          if (Math.abs(e.clientX - (r.left + r.width / 2)) < reach && Math.abs(e.clientY - (r.top + r.height / 2)) < reach) {
+            keyHeld = true
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
+          }
+        }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
@@ -673,6 +692,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let a = turn(f, now, dt, half, cx, cy)
     let cos = Math.cos(a)
     let sin = Math.sin(a)
+    let tilt = f.motion?.tilt ?? 0
+    let tc = Math.cos(tilt)
+    let ts = Math.sin(tilt)
+    // pixels in front of the middle are drawn after those behind it, so a
+    // shape with depth never shows through itself
+    let near: [string, number, number, number][] = []
     // perspective distance, in cells
     let lens = f.size.w * 2.2
     let push = 6 * C
@@ -687,13 +712,19 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let ty = pt.sy
       let scale = 1
       let depth = 0
+      let z = 0
       if (c) {
-        // turn the cell around the shape's vertical axis, then project
+        // turn the cell around the shape's vertical axis, lean it, project
         let u = c.x - half
-        let z = -u * sin
+        let v = c.y - f.size.h / 2 + pressed * 2
+        let z0 = c.z ?? 0
+        let x1 = u * cos + z0 * sin
+        let z1 = -u * sin + z0 * cos
+        let y2 = v * tc - z1 * ts
+        z = v * ts + z1 * tc
         scale = lens / (lens - z)
-        tx = cx + u * cos * scale * cell
-        ty = cy + (c.y - f.size.h / 2 + pressed * 0.5) * scale * cell
+        tx = cx + x1 * scale * cell
+        ty = cy + y2 * scale * cell
         depth = z < -half * 0.45 ? 3 : z < -half * 0.25 ? 2 : z < -half * 0.08 ? 1 : 0
       }
       let goal: RGB = palette.bg
@@ -701,7 +732,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       if (c) {
         goal = wb && c.letter !== undefined ? wb[c.letter][c.group] : palette[c.role]
         dim = Boolean(highlight && c.group && f.anchor.closest('#how') && c.group !== highlight)
-        if (pressed) goal = mix(goal, palette.crest, 0.35)
+        // pressed (F held, or the key clicked): the cap lights up, and its
+        // rim glows brighter with the voice level, like a backlit key
+        if (pressed) goal = mix(goal, palette.crest, c.role === 'lavender' ? 0.35 + 0.5 * level : 0.35)
         if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
       }
       let color = k === 1 ? goal : mix(pt.from, goal, k)
@@ -759,13 +792,16 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         }
       }
       if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) dim = true
-      paint(shade(color, depth, dim), Math.round(x), Math.round(y), size)
+      if (z > 0) near.push([shade(color, depth, dim), x, y, size])
+      else paint(shade(color, depth, dim), x, y, size)
       // in flight, a short streak behind each pixel
       if (k > 0 && k < 1 && !reduced) {
         paint(shade(color, 2, dim), Math.round(lerp(x, lastX, 0.5)), Math.round(lerp(y, lastY, 0.5)), size)
         paint(shade(color, 3, dim), Math.round(lastX), Math.round(lastY), size)
       }
     })
+    flush(fx)
+    for (let [color, nx, ny, size] of near) paint(color, nx, ny, size)
   }
 
   // The bird sits above the wordmark in the hero. Scroll, and it lifts,
