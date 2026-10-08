@@ -11,15 +11,21 @@ export const Toast = clientEntry(import.meta.url, function Toast(handle: Handle)
   let open = false
   let inHero = true
 
+  // shown until the first section's panel comes into view
+  let check = () => {
+    let panel = document.querySelector('[data-scene]:not(#top) .panel')
+    return !panel || panel.getBoundingClientRect().top >= innerHeight
+  }
+
   handle.queueTask(() => {
     open = dismissed.get() !== 'closed'
+    // a page opened partway down starts with the hint hidden
+    inHero = check()
     handle.update()
     window.addEventListener(
       'scroll',
       () => {
-        // shown until the first section's panel comes into view
-        let panel = document.querySelector('[data-scene]:not(#top) .panel')
-        let next = !panel || panel.getBoundingClientRect().top >= innerHeight
+        let next = check()
         if (next === inHero) return
         inHero = next
         handle.update()
