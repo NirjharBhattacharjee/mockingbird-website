@@ -39,6 +39,10 @@ describe('bird frames', () => {
     assert.ok(flapFrame(cells, 72).some((c) => c.x === 30 && c.y === 30 && !c.wing))
   })
 
+  it('keeps every logo pixel in the resting frame', () => {
+    assert.equal(flapFrame(cells, 0).length, cells.length)
+  })
+
   it('turning by zero changes nothing', () => {
     assert.equal(turnBird(cells, 0), cells)
   })

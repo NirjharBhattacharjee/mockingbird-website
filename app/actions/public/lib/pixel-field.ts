@@ -460,7 +460,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   function paint(color: string, x: number, y: number, size: number, height = size) {
     let b = batch.get(color)
     if (!b) batch.set(color, (b = []))
-    b.push(x, y, size, height)
+    // whole pixels, so edges stay crisp (no antialiasing)
+    b.push(Math.round(x), Math.round(y), size, height)
   }
   function flush(pen: CanvasRenderingContext2D) {
     for (let [color, b] of batch) {
@@ -852,7 +853,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     if (!running || signal.aborted) return
     level += (target - level) * (target > level ? 0.18 : 0.06)
     // If frames run slow for ~1.5s, drop the glow; if still slow, use fewer pixels.
-    if (lastFrame) frameMs = frameMs * 0.95 + (now - lastFrame) * 0.05
+    // clamped, so the gap after a hidden tab comes back is not a slow frame
+    if (lastFrame) frameMs = frameMs * 0.95 + Math.min(now - lastFrame, 50) * 0.05
     slowFrames = frameMs > 22 ? slowFrames + 1 : 0
     if (slowFrames > 90 && glowOn) {
       glowOn = false
