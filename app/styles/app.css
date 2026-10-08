@@ -133,6 +133,10 @@
   @apply border border-surface0 bg-[color-mix(in_oklab,var(--mantle),transparent_18%)] p-6 backdrop-blur-md sm:p-8;
   border-top-color: var(--hue, var(--surface0));
   box-shadow: 0 0 48px -12px color-mix(in oklab, var(--hue, transparent), transparent 70%);
+  /* the faintest text tier drops under 4.5:1 over the pixels; lift it */
+  & .text-overlay {
+    color: var(--subtext1);
+  }
 }
 @utility scene-title {
   @apply text-[34px] leading-[1.05] font-extrabold tracking-[-0.035em] text-text sm:text-[46px];
