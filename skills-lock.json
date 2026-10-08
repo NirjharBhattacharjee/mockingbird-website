@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "before-and-after": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "before-and-after/SKILL.md",
+      "computedHash": "729f270118b8a43a1814c8c90b4139b26f51439bdf82e1000c6a420a06fa9906"
+    },
+    "code-structure": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "code-structure/SKILL.md",
+      "computedHash": "3b704d95f0f8abc8ef247d3f82ac8f3417b7abdf05d2b955fc25d80c5d4f95b4"
+    },
+    "evidence-driven-testing": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "evidence-driven-testing/SKILL.md",
+      "computedHash": "7e0fcfc228890c29111bd153b4794a5623626a861f2de07b3849692bf2e85bcf"
+    },
+    "new-feature": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "new-feature/SKILL.md",
+      "computedHash": "b41908f1cd29c7728cf63c81960c856e2d115928542d77af0c30479690b83576"
+    },
+    "unslop": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "unslop/SKILL.md",
+      "computedHash": "87887480cc8720e536c14706176eaeef91d17ae3e6b890665bf51ac6883fdf21"
+    }
+  }
+}
