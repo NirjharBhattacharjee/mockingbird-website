@@ -20,7 +20,8 @@
 // shared wave field ripples them under the pointer.
 
 import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
-import { type Palette, type RGB, bands, mix, readPalette, rgb } from './palette.ts'
+import { type Palette, type RGB, type Role, bands, mix, readPalette, rgb } from './palette.ts'
+import { FLAP, LIFT, type BirdCell, flapFrame } from './bird.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
 import { type Cell, MOTION, type Motion, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
@@ -151,7 +152,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let palette: Palette = readPalette()
   let logo: HTMLImageElement | null = null
   let bird: ReturnType<typeof sampleLogo> | null = null
-  let birdRing: { x: number; y: number }[] = []
+  // the flap: one set of cells per frame, and the Latte ring around each
+  let birdFrames: BirdCell<Role>[][] = []
+  let birdRings: { x: number; y: number }[][] = []
+  let flutterAt = -1e9
+  let birdBox: { x: number; y: number; w: number; h: number } | null = null
+  let feathers: { x: number; y: number; vx: number; vy: number; life: number; role: Role }[] = []
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -306,6 +312,24 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
   }
 
+  // A click on the bird: a burst of fast wingbeats, a hop, a flash along the
+  // wings, and a few feathers drifting down.
+  function flutter(now: number) {
+    flutterAt = now
+    let b = birdBox
+    if (!b || !bird) return
+    for (let i = 0; i < 4; i++) {
+      feathers.push({
+        x: b.x + b.w * (0.2 + Math.random() * 0.4),
+        y: b.y + b.h * (0.15 + Math.random() * 0.2),
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: 0.4 + Math.random() * 0.6,
+        life: 70 + Math.random() * 30,
+        role: Math.random() < 0.5 ? 'mauve' : 'sky',
+      })
+    }
+  }
+
   /** Drops `strength` into the wave field around a grid cell. */
   function splash(x: number, y: number, strength: number) {
     for (let dy = -1; dy <= 1; dy++) {
@@ -382,6 +406,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let y = Math.floor(e.clientY / C)
         ripples.push({ x, y, at: now }, { x, y, at: now + 140 })
         splash(x, y, 3)
+        let b = birdBox
+        if (b && e.clientX >= b.x && e.clientX < b.x + b.w && e.clientY >= b.y && e.clientY < b.y + b.h) flutter(now)
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
@@ -667,6 +693,37 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let g = s >= 3 ? gap / 2 : 0
     let intro = reduced ? 99 : (now - bootAt) / 1000
 
+    // Wings: hold the logo's pose half a second, then one beat (four frames).
+    // A click flutters: beats four times faster for 0.6s, with a hop.
+    // Reduced motion holds still, mid-beat.
+    let since = now - flutterAt
+    let frame = reduced ? 1 : since < 600 ? Math.floor(since / 50) % 4 : now % 1000 < 500 ? 0 : Math.floor((now % 500) / 125)
+    let cells = birdFrames[frame] ?? bird.cells
+    y += LIFT[frame] * s - (since < 600 ? Math.sin((Math.PI * since) / 600) * 6 * s : 0)
+    let flash = !reduced && since < 350
+    birdBox = { x, y, w: bird.w * s, h: bird.h * s }
+
+    // It notices you: the head tilts toward the pointer, and feathers near
+    // it scatter and settle back.
+    let headX = x + 31 * s
+    let headY = y + 12 * s
+    let near = !reduced && intro >= 1.6 && k < 0.2 && pointer && Math.hypot(pointer.x - headX, pointer.y - headY) < 320
+    let hdx = near && pointer!.x > headX + 30 ? 1 : 0
+    let hdy = near ? (pointer!.y < headY - 30 ? -1 : pointer!.y > headY + 30 ? 1 : 0) : 0
+    let reach = 9 * s
+    let nudge = (c: { x: number; y: number }, at: [number, number]): [number, number] => {
+      let head = c.x >= 25 && c.y <= 16
+      let px = at[0] + (head ? hdx * s : 0)
+      let py = at[1] + (head ? hdy * s : 0)
+      if (!near || !pointer) return [px, py]
+      let dx = px - pointer.x
+      let dy = py - pointer.y
+      let d = Math.hypot(dx, dy)
+      if (d >= reach || d === 0) return [px, py]
+      let push = (1 - d / reach) * 2.5 * s * (0.6 + hash(c.x, c.y, 12))
+      return [px + (dx / d) * push, py + (dy / d) * push]
+    }
+
     // Where a bird pixel is drawn, streaming in from the upper right on load.
     let place = (c: { x: number; y: number }): [number, number] | null => {
       if (intro >= 1.6) return [x + c.x * s, y + c.y * s]
@@ -681,18 +738,34 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // in, so it never scatters away from it. Dark flavors don't need it.
     if (palette.light && intro >= 1.6) {
       let ring = css(mix(palette.text, palette.bg, 0.1))
-      for (let c of birdRing) {
+      for (let c of birdRings[frame] ?? []) {
         let at = place(c)
-        if (at) paint(ring, at[0], at[1], s)
+        if (at) {
+          let [px, py] = nudge(c, at)
+          paint(ring, px, py, s)
+        }
       }
     }
-    for (let c of bird.cells) {
+    for (let c of cells) {
       let at = place(c)
       if (!at) continue
+      let [px, py] = nudge(c, at)
       let color = palette[c.role]
-      if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
-      paint(css(color), at[0], at[1], s - g)
+      if (flash && c.wing) color = palette.crest
+      else if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
+      paint(css(color), px, py, s - g)
     }
+
+    // feathers from a flutter, and the notes leaving the beak while you talk,
+    // drawn on the glowing layer
+    for (let fe of feathers) {
+      fe.x += fe.vx + Math.sin(fe.life / 6) * 0.6
+      fe.y += fe.vy
+      fe.life--
+      paint(css(mix(palette[fe.role], palette.bg, 1 - fe.life / 100)), fe.x, fe.y, s)
+    }
+    feathers = feathers.filter((fe) => fe.life > 0)
+    for (let sp of sparks) paint(css(mix(palette.crest, palette.bg, 1 - sp.life / 50)), sp.x, sp.y, Math.max(2, Math.round(C * 0.6)))
 
     if (recording && k < 0.2 && Math.random() < 0.45) {
       sparks.push({
@@ -788,7 +861,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     if (signal.aborted) return
     if (logo) {
       bird = sampleLogo(logo, 40)
-      birdRing = outline(bird.cells)
+      birdFrames = FLAP.map((deg, i) => flapFrame(bird!.cells, deg, i === 2 ? 0.9 : 1))
+      birdRings = birdFrames.map((cells) => outline(cells))
     }
     resize()
     bootAt = performance.now()
