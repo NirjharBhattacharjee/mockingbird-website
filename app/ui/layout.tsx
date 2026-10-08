@@ -69,23 +69,23 @@ export function Nav(handle: Handle<{ home?: boolean }>) {
   }
 }
 
-// One full-height section of the home page: a stage the pixel field draws
-// this scene's shape into, beside a panel of content.
-export function Scene(handle: Handle<{ id: string; shape: string; flip?: boolean; children?: RemixNode }>) {
+// One full-height section of the home page. The text panel is the content,
+// centered. The whole section is the stage the pixel field draws this
+// scene's shape on, behind and around the panel, in the scene's hue.
+export function Scene(handle: Handle<{ id: string; shape: string; hue: string; children?: RemixNode }>) {
   return () => {
-    let { id, shape, flip, children } = handle.props
+    let { id, shape, hue, children } = handle.props
     return (
-      <section id={id} data-scene={id} data-shape={shape} class="relative z-10 flex min-h-[100svh] items-center">
-        <div
-          class={cx(
-            // leaves room on the left for the section index
-            'mx-auto grid w-full max-w-[1200px] items-center gap-6 px-4 py-24 md:gap-12 xl:pl-60',
-            flip ? 'md:grid-cols-[7fr_5fr]' : 'md:grid-cols-[5fr_7fr]',
-          )}
-        >
-          <div data-stage aria-hidden="true" class={cx('h-48 md:h-[min(30rem,70svh)]', flip && 'md:order-last')} />
-          <div class="reveal panel min-w-0">{children}</div>
-        </div>
+      <section
+        id={id}
+        data-scene={id}
+        data-shape={shape}
+        class="relative z-10 flex min-h-[100svh] items-center justify-center px-4 pt-56 pb-24 md:py-24"
+        style={{ '--hue': hue } as Vars}
+      >
+        {/* on phones the shape sits in the band above the panel */}
+        <div data-stage aria-hidden="true" class="absolute inset-x-0 top-0 h-56 md:inset-0 md:h-auto" />
+        <div class="reveal panel relative w-full max-w-[46rem]">{children}</div>
       </section>
     )
   }

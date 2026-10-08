@@ -26,6 +26,8 @@ const SCENES = [
   { id: 'involved', label: 'Get involved', accent: 'var(--peach)' },
 ]
 
+const hue = (id: string) => SCENES.find((s) => s.id === id)!.accent
+
 export function HomePage() {
   return () => (
     <Document>
@@ -104,7 +106,7 @@ function Hero() {
 
 function About() {
   return () => (
-    <Scene id="about" shape="bird">
+    <Scene id="about" shape="bird" hue={hue('about')}>
       <SceneHead title={<>Your words aren't <TypedText phrases={['metered.', 'uploaded.', 'stored.', 'for sale.']} /></>} />
       <div class="space-y-4 text-soft">
         <p>
@@ -139,7 +141,7 @@ function Demo() {
     ['Let go', <>A falling <em class="text-sky not-italic">pop</em>, and a tidy sentence is typed where your cursor is.</>],
   ]
   return () => (
-    <Scene id="demo" shape="fn" flip>
+    <Scene id="demo" shape="fn" hue={hue('demo')}>
       <SceneHead
         title="Hold fn. Speak. Let go."
         lede={<>Run <code class="text-sky">mockingbird start</code> once. After that it's just a key, in every app, at every login.</>}
@@ -176,7 +178,7 @@ function Spec(handle: Handle<{ rows: [string, string][] }>) {
 
 function HowItWorks() {
   return () => (
-    <Scene id="how" shape="pipeline">
+    <Scene id="how" shape="pipeline" hue={hue('how')}>
       <SceneHead title="Three models, one key" lede="Each model does the one job it's best at, and all of them are served from 127.0.0.1." />
       <Tabs
         name="how"
@@ -275,7 +277,7 @@ function Install() {
     ['mockingbird fn', 'Bind Fn to dictation, so it stops opening the emoji picker'],
   ]
   return () => (
-    <Scene id="install" shape="terminal" flip>
+    <Scene id="install" shape="terminal" hue={hue('install')}>
       <SceneHead title="Install mockingbird" lede="You need a Mac with Apple Silicon, Homebrew, and about 6 GB free for the models." />
       <Tabs
         name="install"
@@ -378,7 +380,7 @@ function StaysLocal() {
     ['$0', 'forever', 'No credits, no caps, no "upgrade to keep talking".', 0, 'var(--peach)'],
   ]
   return () => (
-    <Scene id="local" shape="lock">
+    <Scene id="local" shape="lock" hue={hue('local')}>
       <SceneHead
         title="Small numbers, on purpose"
         lede="The only network call mockingbird makes is the model download you run yourself."
@@ -467,7 +469,7 @@ const ROADMAP: [string, string, [number, string][]][] = [
 
 function WhatsNext() {
   return () => (
-    <Scene id="next" shape="road" flip>
+    <Scene id="next" shape="road" hue={hue('next')}>
       <SceneHead
         title="What's next"
         lede="The open issues on GitHub, grouped by what they change. Each one is a good place to start."
@@ -510,7 +512,7 @@ function GetInvolved() {
     ['\uf004', 'Read the philosophy', 'Why it exists, and what it must never become.', 'Philosophy', links.philosophy],
   ]
   return () => (
-    <Scene id="involved" shape="heart">
+    <Scene id="involved" shape="heart" hue={hue('involved')}>
       <SceneHead title="Get involved" lede="Mockingbird is built in the open. Here's where to start." />
       <ul class="divide-y divide-surface0 border-y border-surface0">
         {rows.map(([icon, title, body, cta, href]) => (

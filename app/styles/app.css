@@ -127,8 +127,12 @@
 @utility card {
   @apply border border-surface0 bg-[color-mix(in_oklab,var(--base),var(--mantle)_50%)];
 }
+/* see-through enough for the scene's shape to read around it (the field
+   dims pixels behind it); the top edge and glow pick up the scene's hue */
 @utility panel {
-  @apply border border-surface0 bg-[color-mix(in_oklab,var(--mantle),transparent_6%)] p-6 backdrop-blur-sm sm:p-8;
+  @apply border border-surface0 bg-[color-mix(in_oklab,var(--mantle),transparent_18%)] p-6 backdrop-blur-md sm:p-8;
+  border-top-color: var(--hue, var(--surface0));
+  box-shadow: 0 0 48px -12px color-mix(in oklab, var(--hue, transparent), transparent 70%);
 }
 @utility scene-title {
   @apply text-[34px] leading-[1.05] font-extrabold tracking-[-0.035em] text-text sm:text-[46px];
