@@ -524,8 +524,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
 
     // In Latte the light facets vanish into the background, so a dark
-    // one-pixel ring goes down first (issue #3). Dark flavors don't need it.
-    if (palette.light) {
+    // one-pixel ring goes down first (issue #3), once the bird has streamed
+    // in, so it never scatters away from it. Dark flavors don't need it.
+    if (palette.light && intro >= 1.6) {
       ctx.fillStyle = rgb(mix(palette.text, palette.bg, 0.1))
       for (let c of birdRing) {
         let at = place(c)
