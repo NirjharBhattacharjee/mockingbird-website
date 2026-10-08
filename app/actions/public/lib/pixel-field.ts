@@ -32,6 +32,8 @@ interface FieldOptions {
 interface Formation {
   cells: (Cell & { letter?: number })[]
   size: { w: number; h: number }
+  /** px per cell: the wordmark has its own, larger cells */
+  cell: number
   anchor: HTMLElement
 }
 
@@ -53,6 +55,9 @@ interface Particle {
   py: number
   /** a spare pixel the current shape doesn't use */
   spare: boolean
+  /** drawn size in px at the start of the flight, and as last drawn */
+  fromSize: number
+  size: number
 }
 
 interface Glitch {
@@ -80,6 +85,15 @@ function cellSize(): number {
   return Math.max(4, Math.min(10, Math.floor((vw - 40) / (WORD_COLS + 4))))
 }
 
+/**
+ * The wordmark's own cell size: it spans about 88% of the width, so it's the
+ * first thing you see, while the background grid stays fine. Same formula
+ * as --wpx in public/theme-init.js.
+ */
+function wordCellSize(): number {
+  return Math.max(4, Math.floor((Math.min(window.innerWidth, 1600) * 0.88) / WORD_COLS))
+}
+
 export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let reduced = prefersReducedMotion()
   let root = document.documentElement
@@ -101,6 +115,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let W = 0
   let H = 0
   let C = 10
+  let WC = 10
   let gap = 2
   let cols = 0
   let rows = 0
@@ -141,7 +156,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     formations.clear()
     if (wordSlot) {
       let cells = layout(WORD).map((c) => ({ x: c.x, y: c.y, letter: c.letter, group: c.band, role: 'sky' as const }))
-      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, anchor: wordSlot })
+      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, cell: WC, anchor: wordSlot })
     }
     for (let scene of sceneList) {
       let stage = scene.querySelector<HTMLElement>('[data-stage]')
@@ -152,23 +167,25 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let cells = buildShape(shape, size, logo)
       // shuffle, so a morph sends pixels criss-crossing like a flock
       cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
-      formations.set(scene.id, { cells, size: { w: size, h: size }, anchor: stage })
+      formations.set(scene.id, { cells, size: { w: size, h: size }, cell: C, anchor: stage })
     }
     let need = Math.max(0, ...[...formations.values()].map((f) => f.cells.length))
     while (particles.length < need) {
       let i = particles.length
-      particles.push({ x: -C, y: -C, sx: -C, sy: -C, from: palette.bg, color: palette.bg, delay: 0, curl: (hash(i, 1, 2) - 0.5) * 160, px: 0, py: 0, spare: true })
+      particles.push({ x: -C, y: -C, sx: -C, sy: -C, from: palette.bg, color: palette.bg, delay: 0, curl: (hash(i, 1, 2) - 0.5) * 160, px: 0, py: 0, spare: true, fromSize: C, size: C })
     }
   }
 
   function origin(f: Formation) {
     let r = f.anchor.getBoundingClientRect()
-    return { x: Math.round(r.left + (r.width - f.size.w * C) / 2), y: Math.round(r.top + (r.height - f.size.h * C) / 2) }
+    return { x: Math.round(r.left + (r.width - f.size.w * f.cell) / 2), y: Math.round(r.top + (r.height - f.size.h * f.cell) / 2) }
   }
 
   function resize() {
     let dpr = Math.min(window.devicePixelRatio || 1, 2)
     C = cellSize()
+    WC = wordCellSize()
+    root.style.setProperty('--wpx', `${WC}px`)
     gap = C >= 8 ? 2 : 1
     root.style.setProperty('--px', `${C}px`)
     W = root.clientWidth
@@ -200,12 +217,13 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let o = old && origin(old)
     particles.forEach((pt, i) => {
       if (pt.spare && old && o) {
-        pt.x = o.x + hash(i, 3) * old.size.w * C
-        pt.y = o.y + hash(i, 4) * old.size.h * C
+        pt.x = o.x + hash(i, 3) * old.size.w * old.cell
+        pt.y = o.y + hash(i, 4) * old.size.h * old.cell
       }
       pt.sx = pt.x
       pt.sy = pt.y
       pt.from = pt.color
+      pt.fromSize = pt.size
       pt.delay = reduced ? 0 : hash(i, 7) * 280
     })
     active = key
@@ -222,8 +240,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     particles.forEach((pt, i) => {
       let c = f.cells[i]
       if (!c) return
-      pt.sx = o.x + (c.x + 20 + hash(c.x, c.y, 6) * 40) * C
-      pt.sy = o.y + (c.y - 8 - hash(c.x, c.y, 1) * 30) * C
+      pt.sx = o.x + (c.x + 20 + hash(c.x, c.y, 6) * 40) * f.cell
+      pt.sy = o.y + (c.y - 8 - hash(c.x, c.y, 1) * 30) * f.cell
+      pt.fromSize = f.cell
       pt.from = palette.bg
       pt.delay = 250 + c.x * 12 + hash(c.x, c.y, 5) * 200
     })
@@ -258,7 +277,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let f = formations.get('top')
     if (active !== 'top' || !f) return false
     let o = origin(f)
-    return x >= o.x && y >= o.y && x < o.x + f.size.w * C && y < o.y + f.size.h * C
+    return x >= o.x && y >= o.y && x < o.x + f.size.w * f.cell && y < o.y + f.size.h * f.cell
   }
 
   if (!reduced) {
@@ -407,15 +426,16 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let isWord = active === 'top'
     let wb = isWord ? wordBands(now) : null
     let pressed = recording && f.anchor.closest('#demo') ? 1 : 0
-    let size = isWord ? C : C - gap
+    let cell = f.cell
+    let target = isWord ? cell : C - gap
     let push = 6 * C
     for (let [letter, g] of glitches) if (g.until < now) glitches.delete(letter)
 
     particles.forEach((pt, i) => {
       let c = f.cells[i]
       let k = reduced ? 1 : easeOut(clamp01((now - morphAt - pt.delay) / MORPH_MS))
-      let tx = c ? o.x + c.x * C : pt.sx
-      let ty = c ? o.y + (c.y + pressed * 0.5) * C : pt.sy
+      let tx = c ? o.x + c.x * cell : pt.sx
+      let ty = c ? o.y + (c.y + pressed * 0.5) * cell : pt.sy
       let goal: RGB = palette.bg
       if (c) {
         goal = wb ? wb[c.group] : palette[c.role]
@@ -447,9 +467,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         y += pt.py
       }
 
+      let size = Math.round(lerp(pt.fromSize, target, k))
       pt.x = x
       pt.y = y
       pt.color = color
+      pt.size = size
       pt.spare = !c
       if (!c && k === 1) return
 
@@ -457,7 +479,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let g = glitches.get(c.letter)
         if (g && k === 1) {
           if (g.mode === 'dither' && (c.x + c.y) % 2) return
-          if (g.mode === 'shift' && c.y >= g.row) x += g.dx * C
+          if (g.mode === 'shift' && c.y >= g.row) x += g.dx * cell
           color = mix(color, palette.crest, 0.4)
         }
       }

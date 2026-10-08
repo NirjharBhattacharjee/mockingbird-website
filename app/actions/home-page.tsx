@@ -67,7 +67,7 @@ function Hero() {
         <div
           id="wordmark-slot"
           class="mt-3 grid max-w-full place-items-center"
-          style={{ width: 'calc(var(--px) * 86)', height: 'calc(var(--px) * 14)' }}
+          style={{ width: 'calc(var(--wpx) * 82)', height: 'calc(var(--wpx) * 14)' }}
         >
           <h1>
             <span class="sr-only">mockingbird</span>
