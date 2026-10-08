@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2 # keep in step with the Dockerfile
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run css
+      - run: bun run test
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t mockingbird-website .
+      - name: Smoke test /healthz
+        run: |
+          docker run -d --rm -p 8080:8080 --name site mockingbird-website
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:8080/healthz && exit 0
+            sleep 1
+          done
+          docker logs site
+          exit 1

@@ -10,7 +10,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass # deploy main only after CI passes
     domains:
       - mockingbirdvoice.org
       - www.mockingbirdvoice.org
