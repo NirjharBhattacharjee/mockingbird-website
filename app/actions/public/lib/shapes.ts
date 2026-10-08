@@ -112,6 +112,22 @@ export function sampleLogo(img: HTMLImageElement, w: number): { w: number; h: nu
   return { w, h, cells }
 }
 
+/** The one-cell ring around a shape: every empty cell touching it, diagonals included. */
+export function outline(cells: { x: number; y: number }[]): { x: number; y: number }[] {
+  let key = (x: number, y: number) => `${x},${y}`
+  let filled = new Set(cells.map((c) => key(c.x, c.y)))
+  let ring = new Map<string, { x: number; y: number }>()
+  for (let c of cells) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        let k = key(c.x + dx, c.y + dy)
+        if (!filled.has(k)) ring.set(k, { x: c.x + dx, y: c.y + dy })
+      }
+    }
+  }
+  return [...ring.values()]
+}
+
 /** Cells of the shape called `name`, fitted to a `size`-cell square. */
 export function buildShape(name: string, size: number, logo: HTMLImageElement | null): Cell[] {
   switch (name) {
