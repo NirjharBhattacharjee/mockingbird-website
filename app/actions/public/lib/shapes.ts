@@ -12,6 +12,8 @@ export interface Cell {
   group: number
   /** depth in cells, toward the viewer; flat shapes leave it out */
   z?: number
+  /** on a ring around the middle: it orbits there, always facing you */
+  ring?: { radius: number; angle: number }
 }
 
 export const FONT = '"JetBrains Mono Nerd", "JetBrains Mono Nerd Icons"'
@@ -126,6 +128,8 @@ export interface Motion {
   holdOnTouch?: boolean
   /** a fixed lean toward you around the horizontal axis, radians */
   tilt?: number
+  /** radians a second the ring cells orbit at */
+  orbit?: number
 }
 
 /** What a shape does unless MOTION says otherwise: sway, and face you when touched. */
@@ -136,6 +140,8 @@ export const MOTION: Record<string, Motion> = {
   // the Fn key turns on its own, leans so you see its top, and holds still
   // facing you while you touch it
   fn: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
+  // the bird in the middle sways; the four stages orbit it once every 24s
+  pipeline: { sway: 0.6, tilt: 0.55, orbit: (2 * Math.PI) / 24 },
 }
 
 /**
@@ -154,6 +160,16 @@ export const AMBIENT: Record<string, Ambient> = {
   lock: 'motes',
   road: 'rush',
   heart: 'rise',
+}
+
+/** The pipeline ring's radius, as a share of the shape: wide enough to clear the panel. */
+export const RING = 0.62
+
+/** Gives a flat shape thickness: its face in front, its border repeated back as walls. */
+export function extrude(face: Cell[], depth: number, step = 2): Cell[] {
+  let cells: Cell[] = face.map((c) => ({ ...c, z: depth / 2 }))
+  for (let z = -depth / 2; z < depth / 2; z += step) for (let c of edge(face)) cells.push({ ...c, z })
+  return cells
 }
 
 /** The cells on a shape's own border: the ones with an empty neighbor. */
@@ -214,27 +230,37 @@ export function buildShape(name: string, size: number, logo: HTMLImageElement | 
       return cells
     }
     case 'pipeline': {
-      // listen → hear → tidy → type, around a square
-      let q = (code: string, role: Role, group: number, col: number, row: number): Layer => ({
-        role,
-        group,
-        draw: (ctx, s) => glyph(ctx, code, s * (0.22 + col * 0.56), s * (0.22 + row * 0.56), s * 0.36),
-      })
-      return rasterize(size, [
-        {
-          role: 'mid',
-          draw: (ctx, s) => {
-            let t = Math.max(1, Math.round(s * 0.03))
-            ctx.fillRect(s * 0.44, s * 0.22 - t / 2, s * 0.12, t)
-            ctx.fillRect(s * 0.78 - t / 2, s * 0.44, t, s * 0.12)
-            ctx.fillRect(s * 0.44, s * 0.78 - t / 2, s * 0.12, t)
-          },
-        },
-        q(ICON.mic, 'teal', 1, 0, 0),
-        q(ICON.words, 'sky', 2, 1, 0),
-        q(ICON.magic, 'mauve', 3, 1, 1),
-        q(ICON.cursor, 'peach', 4, 0, 1),
-      ])
+      // A solid pixel mockingbird in the middle, and listen → hear → tidy →
+      // type on a ring around it, joined by a dotted orbit.
+      let mid = size / 2
+      let b = logo ? sampleLogo(logo, Math.round(size * 0.4)) : null
+      let bird = b
+        ? extrude(b.cells.map((c) => ({ ...c, x: c.x + Math.round(mid - b.w / 2), y: c.y + Math.round(mid - b.h / 2) })), 4)
+        : []
+      let radius = size * RING
+      let span = Math.round(size * 0.2)
+      let stages: [string, Role][] = [
+        [ICON.mic, 'teal'],
+        [ICON.words, 'sky'],
+        [ICON.magic, 'mauve'],
+        [ICON.cursor, 'peach'],
+      ]
+      let icons = stages.flatMap(([code, role], i) =>
+        rasterize(span, [{ role, group: i + 1, draw: (ctx, s) => glyph(ctx, code, s / 2, s / 2, s * 0.9) }]).map((c) => ({
+          ...c,
+          x: c.x + mid - span / 2,
+          y: c.y + mid - span / 2,
+          ring: { radius, angle: (i * Math.PI) / 2 },
+        })),
+      )
+      let path: Cell[] = Array.from({ length: 96 }, (_, i) => ({
+        x: mid,
+        y: mid,
+        role: 'mid',
+        group: 0,
+        ring: { radius, angle: (i * 2 * Math.PI) / 96 },
+      }))
+      return [...bird, ...icons, ...path]
     }
     case 'terminal':
       return rasterize(size, [icon(ICON.terminal, 'green')])
