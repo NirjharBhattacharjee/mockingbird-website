@@ -438,4 +438,11 @@ html.js [data-flies] {
     animation: none !important;
     transition: none !important;
   }
+  /* chips and buttons sink or lift a pixel on hover; hold them still */
+  .chip,
+  .btn,
+  .btn-primary,
+  .btn-ghost {
+    translate: none !important;
+  }
 }
