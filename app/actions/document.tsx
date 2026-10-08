@@ -23,7 +23,10 @@ export function Document(handle: Handle<DocumentProps>) {
     let { href, importMap, preloads } = scriptEntry
 
     return (
-      <html lang="en" data-flavor="mocha">
+      // theme-init.js sets class, style (--px) and data-flavor before first
+      // paint. data-rmx-preserve-attrs keeps them when a client-side
+      // navigation diffs this element against the next page's <html>.
+      <html lang="en" data-flavor="mocha" data-rmx-preserve-attrs="class style data-flavor">
         <head>
           <meta charSet="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
