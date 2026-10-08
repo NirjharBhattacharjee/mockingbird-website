@@ -4,3 +4,4 @@ public/styles.css
 .DS_Store
 *.mov
 .claude/worktrees/
+.claude/settings.local.json

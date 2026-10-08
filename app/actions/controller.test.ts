@@ -15,6 +15,14 @@ describe('root controller', () => {
     assert.match(await response.text(), /<html[\s>]/)
   })
 
+  it('keeps theme-init.js attributes across client-side navigations', async () => {
+    // Without this, going home from /docs dropped the js class (showing the
+    // text wordmark) and the saved flavor. See issue #2.
+    let body = await (await get(routes.home.href())).text()
+
+    assert.match(body, /<html[^>]* data-rmx-preserve-attrs="class style data-flavor"/)
+  })
+
   it('GET /docs renders the user guide from the copied docs', async () => {
     let response = await get(routes.docs.href())
     let body = await response.text()
