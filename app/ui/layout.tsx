@@ -7,12 +7,19 @@ import { links } from './links.ts'
 type Vars = Record<string, string>
 
 /** "[g] guide": a nav link with a one-letter shortcut (handled by FlavorButton). */
-function Chip(handle: Handle<{ shortcut: string; href: string; class?: string; children?: RemixNode }>) {
+function Chip(handle: Handle<{ shortcut: string; href: string; current?: string; class?: string; children?: RemixNode }>) {
   return () => {
-    let { shortcut, href, children } = handle.props
+    let { shortcut, href, current, children } = handle.props
+    let here = href === current
     return (
       <li class={handle.props.class}>
-        <a href={href} data-key={shortcut} class="chip" aria-keyshortcuts={shortcut}>
+        <a
+          href={href}
+          data-key={shortcut}
+          aria-current={here ? 'page' : undefined}
+          class={cx('chip', here && 'border-sky bg-sky/15 text-text')}
+          aria-keyshortcuts={shortcut}
+        >
           <span aria-hidden="true" class="text-sky">
             [{shortcut}]
           </span>
@@ -24,10 +31,11 @@ function Chip(handle: Handle<{ shortcut: string; href: string; class?: string; c
 }
 
 // On the home page the bar is see-through and the bird flies into the home
-// link as you scroll (`data-flies`). Elsewhere it's a solid bar.
-export function Nav(handle: Handle<{ home?: boolean }>) {
+// link as you scroll (`data-flies`). Elsewhere it's a solid bar. It spans the
+// full width, inset like the section index, so it sits on the screen edges.
+export function Nav(handle: Handle<{ home?: boolean; current?: string }>) {
   return () => {
-    let home = handle.props.home
+    let { home, current } = handle.props
     return (
       <header
         class={cx(
@@ -35,7 +43,7 @@ export function Nav(handle: Handle<{ home?: boolean }>) {
           home ? 'pointer-events-none' : 'border-b border-surface0 bg-crust/85 backdrop-blur-md',
         )}
       >
-        <nav aria-label="Main" class="mx-auto flex h-16 max-w-[1200px] items-center gap-3 px-4">
+        <nav aria-label="Main" class="flex h-18 items-center gap-3 px-4">
           <a
             id="home-slot"
             href="/"
@@ -43,17 +51,17 @@ export function Nav(handle: Handle<{ home?: boolean }>) {
             class="pointer-events-auto flex items-center gap-2.5"
             aria-label="mockingbird home"
           >
-            <img src="/brand/logo.png" alt="" width="22" height="28" class="pixelated h-7 w-auto" />
-            <span class="hidden text-[16px] font-extrabold tracking-tight text-sky sm:inline">mockingbird</span>
+            <img src="/brand/logo.png" alt="" width="28" height="36" class="pixelated h-9 w-auto" />
+            <span class="hidden text-[18px] font-extrabold tracking-tight text-sky sm:inline">mockingbird</span>
           </a>
-          <ul class="pointer-events-auto ml-auto flex items-center gap-1.5">
+          <ul class="pointer-events-auto ml-auto flex items-center gap-2">
             <Chip shortcut="i" href="/#install" class="hidden md:block">
               install
             </Chip>
-            <Chip shortcut="g" href={links.docs}>
+            <Chip shortcut="g" href={links.docs} current={current}>
               guide
             </Chip>
-            <Chip shortcut="p" href={links.philosophy} class="hidden sm:block">
+            <Chip shortcut="p" href={links.philosophy} current={current} class="hidden sm:block">
               philosophy
             </Chip>
             <Chip shortcut="h" href={links.repo} class="hidden sm:block">
