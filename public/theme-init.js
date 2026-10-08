@@ -12,4 +12,7 @@
   var vw = Math.min(window.innerWidth, 1280)
   var px = Math.max(4, Math.min(10, Math.floor((vw - 40) / 86)))
   root.style.setProperty('--px', px + 'px')
+  // The wordmark's own cells, as wordCellSize() in pixel-field.ts.
+  var wpx = Math.max(4, Math.floor((Math.min(window.innerWidth, 1600) * 0.88) / 82))
+  root.style.setProperty('--wpx', wpx + 'px')
 })()
