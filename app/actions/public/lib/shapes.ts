@@ -129,6 +129,24 @@ export const SWAY: Motion = { sway: 0.22, holdOnTouch: true }
 /** Each shape's own motion, set as the sections get their redesigns. */
 export const MOTION: Record<string, Motion> = {}
 
+/**
+ * Each section's world, by its shape: how its ambient pixels move.
+ * flock drifts across in formation, rise floats up (dust, embers), orbit
+ * circles the middle, fall rains down like a scrolling log, motes drift out
+ * and get pulled back (nothing leaves), rush streams out to the sides.
+ */
+export type Ambient = 'flock' | 'rise' | 'orbit' | 'fall' | 'motes' | 'rush'
+
+export const AMBIENT: Record<string, Ambient> = {
+  bird: 'flock',
+  fn: 'rise',
+  pipeline: 'orbit',
+  terminal: 'fall',
+  lock: 'motes',
+  road: 'rush',
+  heart: 'rise',
+}
+
 /** The one-cell ring around a shape: every empty cell touching it, diagonals included. */
 export function outline(cells: { x: number; y: number }[]): { x: number; y: number }[] {
   let key = (x: number, y: number) => `${x},${y}`

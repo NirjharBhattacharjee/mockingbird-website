@@ -20,10 +20,10 @@
 // shared wave field ripples them under the pointer.
 
 import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
-import { type Palette, type RGB, type Role, bands, mix, readPalette, rgb } from './palette.ts'
+import { type Palette, type RGB, type Role, bands, hex, mix, readPalette, rgb } from './palette.ts'
 import { FLAP, LIFT, type BirdCell, divePose, flapFrame, turnBird } from './bird.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
-import { type Cell, MOTION, type Motion, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
+import { AMBIENT, type Ambient, type Cell, MOTION, type Motion, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
 const WORD = 'mockingbird'
 const WORD_COLS = measure(WORD)
@@ -51,6 +51,17 @@ interface Formation {
   motion?: Motion
   /** current turn around the vertical axis, radians */
   angle: number
+  /** the section's world: its hue and how its ambient pixels move */
+  hue?: RGB
+  ambient?: Ambient
+}
+
+interface Mote {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  kind?: Ambient
 }
 
 /** how far toward the background each depth step pulls a pixel's color */
@@ -160,6 +171,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let feathers: { x: number; y: number; vx: number; vy: number; life: number; role: Role }[] = []
   // dive frames by wing angle and pitch (5 degree steps), and the last
   // progress seen, to know when the bird hits the next section
+  // the current world's background tint (eases between worlds) and its
+  // ambient pixels
+  let tint: RGB | null = null
+  let motes: Mote[] = Array.from({ length: 240 }, () => ({ x: 0, y: 0, vx: 0, vy: 0 }))
   let diveFrames = new Map<string, BirdCell<Role>[]>()
   let lastP = 0
 
@@ -213,7 +228,18 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let cells = buildShape(shape, size, logo)
       // shuffle, so a morph sends pixels criss-crossing like a flock
       cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
-      formations.set(scene.id, { cells, size: { w: size, h: size }, cell, gap: cell >= 5 ? 1 : 0, anchor: stage, motion: MOTION[shape] ?? SWAY, angle: 0 })
+      let hue = getComputedStyle(scene).getPropertyValue('--hue').trim()
+      formations.set(scene.id, {
+        cells,
+        size: { w: size, h: size },
+        cell,
+        gap: cell >= 5 ? 1 : 0,
+        anchor: stage,
+        motion: MOTION[shape] ?? SWAY,
+        angle: 0,
+        hue: hue.startsWith('#') ? hex(hue) : undefined,
+        ambient: AMBIENT[shape],
+      })
     }
     let need = Math.max(0, ...[...formations.values()].map((f) => f.cells.length))
     while (particles.length < need) {
@@ -486,6 +512,53 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     return rows * 0.22 * envelope * (idle * (1 - level) * show + (0.35 + 0.9 * talk) * level)
   }
 
+  // Each section's world: the background takes a faint tint of its hue,
+  // and its ambient pixels move its own way (AMBIENT in shapes.ts).
+  function respawn(m: Mote, kind: Ambient, cx: number, cy: number) {
+    let r = Math.random
+    let span = Math.min(W, H)
+    m.kind = kind
+    if (kind === 'rise') Object.assign(m, { x: r() * W, y: H + r() * H * 0.4, vx: 0, vy: -(0.3 + r() * 0.7) })
+    else if (kind === 'fall') Object.assign(m, { x: Math.floor(r() * cols) * C, y: -r() * H, vx: 0, vy: 1.5 + r() * 2.5 })
+    else if (kind === 'orbit') Object.assign(m, { x: r() * Math.PI * 2, y: span * (0.25 + r() * 0.22), vx: 0.002 + r() * 0.004, vy: 0 })
+    else if (kind === 'motes') Object.assign(m, { x: cx + (r() - 0.5) * 40, y: cy + (r() - 0.5) * 40, vx: (r() - 0.5) * 3, vy: (r() - 0.5) * 3 })
+    else if (kind === 'rush') Object.assign(m, { x: cx, y: H * (0.55 + r() * 0.45), vx: (r() < 0.5 ? -1 : 1) * (1 + r() * 2), vy: 0 })
+    else Object.assign(m, { x: -r() * W * 0.5, y: H * (0.15 + r() * 0.5), vx: 0.8 + r() * 0.5, vy: r() * Math.PI * 2 })
+  }
+
+  function drawWorld(now: number) {
+    let f = formations.get(active)
+    let goal = f?.hue ? mix(palette.bg, f.hue, palette.light ? 0.1 : 0.07) : palette.bg
+    tint = !tint || reduced ? goal : mix(tint, goal, 0.06)
+    ctx.fillStyle = css(tint)
+    ctx.fillRect(0, 0, W, H)
+    let kind = f?.ambient
+    if (!kind || !f?.hue || reduced) return
+    let r = f.anchor.getBoundingClientRect()
+    let cx = r.left + r.width / 2
+    let cy = r.top + r.height / 2
+    let color = css(mix(f.hue, palette.bg, 0.4))
+    let size = Math.max(2, Math.round(C * 0.5))
+    for (let m of motes) {
+      if (m.kind !== kind) respawn(m, kind, cx, cy)
+      if (kind === 'orbit') {
+        m.x += m.vx
+        paint(color, cx + Math.cos(m.x) * m.y, cy + Math.sin(m.x) * m.y * 0.45, size)
+        continue
+      }
+      if (kind === 'motes') {
+        // pulled back toward the middle: nothing leaves the frame
+        m.vx += (cx - m.x) * 0.0006
+        m.vy += (cy - m.y) * 0.0006
+      }
+      if (kind === 'rush') m.vx *= 1.03
+      m.x += m.vx
+      m.y += kind === 'flock' ? Math.sin(now / 700 + m.vy) * 0.4 : m.vy
+      if (m.x < -60 || m.x > W + 60 || m.y < -H || m.y > H + H * 0.5) respawn(m, kind, cx, cy)
+      paint(color, m.x, m.y, size, kind === 'fall' ? size * 3 : size)
+    }
+  }
+
   function drawBackground(now: number, p: number) {
     let t = reduced ? 0 : now / 1000
     let dim = rgb(palette.dim)
@@ -631,9 +704,16 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
       }
       let color = k === 1 ? goal : mix(pt.from, goal, k)
+      // the flight between sections: each pixel sweeps out past the edges
+      // (a curve through a point pushed away from the middle) and arcs back
       let swing = Math.sin(Math.PI * k) * pt.curl
-      let x = lerp(pt.sx, tx, k) + swing
-      let y = lerp(pt.sy, ty, k) - swing * 0.4
+      let j = 1 - k
+      let ox = W / 2 + (pt.sx - W / 2) * 1.7
+      let oy = H / 2 + (pt.sy - H / 2) * 1.7
+      let x = j * j * pt.sx + 2 * j * k * ox + k * k * tx + swing
+      let y = j * j * pt.sy + 2 * j * k * oy + k * k * ty - swing * 0.4
+      let lastX = pt.x
+      let lastY = pt.y
 
       // shy away from the pointer
       if (!reduced) {
@@ -679,6 +759,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       }
       if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) dim = true
       paint(shade(color, depth, dim), Math.round(x), Math.round(y), size)
+      // in flight, a short streak behind each pixel
+      if (k > 0 && k < 1 && !reduced) {
+        paint(shade(color, 2, dim), Math.round(lerp(x, lastX, 0.5)), Math.round(lerp(y, lastY, 0.5)), size)
+        paint(shade(color, 3, dim), Math.round(lastX), Math.round(lastY), size)
+      }
     })
   }
 
@@ -821,7 +906,6 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   function draw(now: number) {
     let dt = lastFrame ? Math.min(now - lastFrame, 100) : 16
     lastFrame = now
-    ctx.clearRect(0, 0, W, H)
     fx.clearRect(0, 0, W, H)
     let p = heroProgress()
     let key = wanted(p)
@@ -832,6 +916,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       nextAutoGlitch = now + 3500 + Math.random() * 4000
     }
     if (!reduced) stepWave()
+    drawWorld(now)
     drawBackground(now, p)
     drawParticles(now, dt)
     drawBird(now, p)
@@ -885,6 +970,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     palette = readPalette()
     strings.clear()
     shades.clear()
+    // each world's hue follows the new flavor
+    for (let scene of sceneList) {
+      let w = formations.get(scene.id)
+      let hue = getComputedStyle(scene).getPropertyValue('--hue').trim()
+      if (w && hue.startsWith('#')) w.hue = hex(hue)
+    }
     requestDraw()
   }, signal)
   onTalk((state) => {
