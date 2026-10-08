@@ -11,7 +11,7 @@ export function DocsPage(handle: Handle<{ doc: Doc }>) {
     let { doc } = handle.props
     return (
       <Document title={`${doc.title} — mockingbird docs`} description={doc.blurb} path={docHref(doc.slug)}>
-        <Nav />
+        <Nav current={docHref(doc.slug)} />
         <div class="mx-auto grid max-w-[1200px] grid-cols-[minmax(0,1fr)] gap-10 px-4 pt-28 pb-24 md:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_14rem]">
           <nav aria-label="Docs" class="md:sticky md:top-24 md:self-start">
             <ul class="flex gap-x-4 gap-y-1 overflow-x-auto text-[15px] md:flex-col md:overflow-visible">

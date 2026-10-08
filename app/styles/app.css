@@ -141,7 +141,7 @@
 }
 /* nav shortcuts: "[g] guide" */
 @utility chip {
-  @apply inline-flex items-center gap-1.5 border border-surface1 bg-[color-mix(in_oklab,var(--crust),transparent_15%)] px-2 py-1 text-[13px] text-soft transition-colors hover:border-sky hover:text-text;
+  @apply inline-flex min-h-10 items-center gap-1.5 border border-surface1 border-b-2 bg-[color-mix(in_oklab,var(--crust),transparent_15%)] px-3 text-[15px] text-soft transition-[color,border-color,translate] duration-100 hover:translate-y-px hover:border-sky hover:text-text;
 }
 
 /* ---------- tabs: radio inputs, so they work without JavaScript ----------
