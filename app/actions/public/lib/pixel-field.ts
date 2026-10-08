@@ -400,8 +400,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let i = Math.floor(phase)
     let a = palette[ACCENTS[i % ACCENTS.length]]
     let b = palette[ACCENTS[(i + 1) % ACCENTS.length]]
-    // the pass takes the last quarter of each cycle, letters 0.015 apart
-    return Array.from(WORD, (_, letter) => bands(palette, mix(a, b, clamp01((phase - i - 0.75 - letter * 0.015) * 8))))
+    // the pass takes the last quarter of each cycle: letters start 0.012
+    // apart and take 0.125 each, so the last one (0.87) lands by 0.995
+    return Array.from(WORD, (_, letter) => bands(palette, mix(a, b, clamp01((phase - i - 0.75 - letter * 0.012) * 8))))
   }
 
   function drawParticles(now: number) {
