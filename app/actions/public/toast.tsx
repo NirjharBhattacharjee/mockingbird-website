@@ -17,7 +17,9 @@ export const Toast = clientEntry(import.meta.url, function Toast(handle: Handle)
     window.addEventListener(
       'scroll',
       () => {
-        let next = scrollY < innerHeight * 0.4
+        // shown until the first section's panel comes into view
+        let panel = document.querySelector('[data-scene]:not(#top) .panel')
+        let next = !panel || panel.getBoundingClientRect().top >= innerHeight
         if (next === inHero) return
         inHero = next
         handle.update()

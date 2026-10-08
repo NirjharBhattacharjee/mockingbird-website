@@ -165,7 +165,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let shape = scene.dataset.shape
       if (!stage || !shape) continue
       let r = stage.getBoundingClientRect()
-      let size = Math.max(8, Math.floor((Math.min(r.width, r.height) * 0.9) / C))
+      // big enough to frame the centered panel: wings and edges show around it
+      let size = Math.max(8, Math.floor(Math.min(r.width * 0.75, H * 0.95) / C))
       let cells = buildShape(shape, size, logo)
       // shuffle, so a morph sends pixels criss-crossing like a flock
       cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
@@ -435,6 +436,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let cell = f.cell
     let target = isWord ? cell : C - gap
     let push = 6 * C
+    // pixels behind the scene's text panel dim, so the text stays readable
+    let panel = f.anchor.parentElement?.querySelector('.panel')?.getBoundingClientRect()
     for (let [letter, g] of glitches) if (g.until < now) glitches.delete(letter)
 
     particles.forEach((pt, i) => {
@@ -489,6 +492,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
           color = mix(color, palette.crest, 0.4)
         }
       }
+      if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) color = mix(color, palette.bg, 0.6)
       ctx.fillStyle = rgb(color)
       ctx.fillRect(Math.round(x), Math.round(y), size, size)
     })
