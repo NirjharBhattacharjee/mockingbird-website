@@ -42,9 +42,10 @@ export function flapFrame<R>(cells: BirdCell<R>[], degrees: number, reach = 1): 
       if (src) wing.push({ x, y, role: src.role, wing: true })
     }
   }
-  // drop specks the rotation leaves at the wing's edge
+  // drop specks the rotation leaves at the wing's edge; the resting frame is
+  // the logo itself, so it keeps every pixel
   let at = new Set(wing.map((c) => `${c.x},${c.y}`))
-  wing = wing.filter((c) => {
+  if (degrees) wing = wing.filter((c) => {
     let n = 0
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && at.has(`${c.x + dx},${c.y + dy}`)) n++
     return n >= 2
