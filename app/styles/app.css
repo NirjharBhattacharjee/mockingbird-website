@@ -417,6 +417,12 @@
 html.js .no-js-only {
   display: none;
 }
+/* In Latte the logo's light facets need a dark edge to read (issue #3):
+   four 1px drop-shadows trace its outline. */
+[data-flavor="latte"] #home-slot img {
+  filter: drop-shadow(1px 0 0 var(--text)) drop-shadow(-1px 0 0 var(--text)) drop-shadow(0 1px 0 var(--text))
+    drop-shadow(0 -1px 0 var(--text));
+}
 /* the pixel bird flies into the home link; the field shows it when it lands */
 html.js [data-flies] {
   opacity: 0;

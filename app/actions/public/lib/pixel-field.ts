@@ -14,7 +14,7 @@
 import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
 import { type Palette, type RGB, bands, mix, readPalette, rgb } from './palette.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
-import { type Cell, buildShape, loadShapeFonts, sampleLogo } from './shapes.ts'
+import { type Cell, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
 const WORD = 'mockingbird'
 const WORD_COLS = measure(WORD)
@@ -123,6 +123,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let palette: Palette = readPalette()
   let logo: HTMLImageElement | null = null
   let bird: ReturnType<typeof sampleLogo> | null = null
+  let birdRing: { x: number; y: number }[] = []
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -513,20 +514,31 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let g = s >= 3 ? gap / 2 : 0
     let intro = reduced ? 99 : (now - bootAt) / 1000
 
-    for (let c of bird.cells) {
-      let cx = c.x
-      let cy = c.y
-      if (intro < 1.6) {
-        let wait = c.x * 0.006 + hash(c.x, c.y, 7) * 0.25
-        let q = easeOut(clamp01((intro - wait) / 0.7))
-        if (q <= 0) continue
-        cx += (1 - q) * (30 + hash(c.x, c.y, 8) * 70)
-        cy -= (1 - q) * (20 + hash(c.x, c.y, 9) * 50)
+    // Where a bird pixel is drawn, streaming in from the upper right on load.
+    let place = (c: { x: number; y: number }): [number, number] | null => {
+      if (intro >= 1.6) return [x + c.x * s, y + c.y * s]
+      let wait = c.x * 0.006 + hash(c.x, c.y, 7) * 0.25
+      let q = easeOut(clamp01((intro - wait) / 0.7))
+      if (q <= 0) return null
+      return [x + (c.x + (1 - q) * (30 + hash(c.x, c.y, 8) * 70)) * s, y + (c.y - (1 - q) * (20 + hash(c.x, c.y, 9) * 50)) * s]
+    }
+
+    // In Latte the light facets vanish into the background, so a dark
+    // one-pixel ring goes down first (issue #3). Dark flavors don't need it.
+    if (palette.light) {
+      ctx.fillStyle = rgb(mix(palette.text, palette.bg, 0.1))
+      for (let c of birdRing) {
+        let at = place(c)
+        if (at) ctx.fillRect(at[0], at[1], s, s)
       }
+    }
+    for (let c of bird.cells) {
+      let at = place(c)
+      if (!at) continue
       let color = palette[c.role]
       if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
       ctx.fillStyle = rgb(color)
-      ctx.fillRect(x + cx * s, y + cy * s, s - g, s - g)
+      ctx.fillRect(at[0], at[1], s - g, s - g)
     }
 
     if (recording && k < 0.2 && Math.random() < 0.45) {
@@ -593,7 +605,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   async function boot() {
     await loadShapeFonts()
     if (signal.aborted) return
-    if (logo) bird = sampleLogo(logo, 40)
+    if (logo) {
+      bird = sampleLogo(logo, 40)
+      birdRing = outline(bird.cells)
+    }
     resize()
     bootAt = performance.now()
     if (reduced) return requestDraw()
