@@ -21,15 +21,16 @@
 
 import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
 import { type Palette, type RGB, type Role, bands, mix, readPalette, rgb } from './palette.ts'
-import { FLAP, LIFT, type BirdCell, flapFrame } from './bird.ts'
+import { FLAP, LIFT, type BirdCell, divePose, flapFrame, turnBird } from './bird.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
 import { type Cell, MOTION, type Motion, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
 const WORD = 'mockingbird'
 const WORD_COLS = measure(WORD)
 const MORPH_MS = 900
-/** how far through the hero (0-1) you scroll before the wordmark lets go */
-const WORD_UNTIL = 0.45
+/** how far through the hero (0-1) you scroll before the wordmark lets go:
+ *  as the bird starts its dive, so the letters are swept along with it */
+const WORD_UNTIL = 0.3
 /** the wordmark cycles through the bird's own colors, ordered so neighbors blend */
 const ACCENTS = ['sky', 'teal', 'blue', 'lavender', 'mauve'] as const
 const ACCENT_MS = 2600
@@ -139,7 +140,6 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let wordSlot = document.getElementById('wordmark-slot')
   let birdSlot = document.getElementById('bird-slot')
   let home = document.getElementById('home-slot')
-  let homeImg = home?.querySelector('img') ?? null
   let sceneList = scenes()
 
   let W = 0
@@ -158,6 +158,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let flutterAt = -1e9
   let birdBox: { x: number; y: number; w: number; h: number } | null = null
   let feathers: { x: number; y: number; vx: number; vy: number; life: number; role: Role }[] = []
+  // dive frames by wing angle and pitch (5 degree steps), and the last
+  // progress seen, to know when the bird hits the next section
+  let diveFrames = new Map<string, BirdCell<Role>[]>()
+  let lastP = 0
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -453,17 +457,17 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     return str
   }
   let batch = new Map<string, number[]>()
-  function paint(color: string, x: number, y: number, size: number) {
+  function paint(color: string, x: number, y: number, size: number, height = size) {
     let b = batch.get(color)
     if (!b) batch.set(color, (b = []))
-    b.push(x, y, size)
+    b.push(x, y, size, height)
   }
   function flush(pen: CanvasRenderingContext2D) {
     for (let [color, b] of batch) {
       if (!b.length) continue
       pen.fillStyle = color
       pen.beginPath()
-      for (let i = 0; i < b.length; i += 3) pen.rect(b[i], b[i + 1], b[i + 2], b[i + 2])
+      for (let i = 0; i < b.length; i += 4) pen.rect(b[i], b[i + 1], b[i + 2], b[i + 3])
       pen.fill()
       b.length = 0
     }
@@ -489,6 +493,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let lit = rgb(palette.lit)
     let crest = rgb(palette.crest)
     let show = 1 - clamp01(p * 1.6)
+    // while the bird drops, the stars stretch into vertical streaks
+    let streak = reduced ? 0 : Math.max(0, Math.sin((Math.PI * (p - 0.15)) / 0.4)) * (p > 0.15 && p < 0.55 ? 1 : 0)
 
     for (let x = 0; x < cols; x++) {
       let mh = meterHeight(x, t, show)
@@ -506,7 +512,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
           if (on && !reduced && hash(x, y, 3) < 0.25) on = Math.sin(t * (0.4 + hash(x, y, 4)) + r * 40) > -0.3
           tone = hash(x, y, 2) > 0.92 ? 1 : 0
         }
-        if (on) square(x, y, tone === 2 ? (recording ? crest : lit) : tone === 1 ? mid : dim)
+        if (!on) continue
+        let color = tone === 2 ? (recording ? crest : lit) : tone === 1 ? mid : dim
+        if (streak && depth > mh + 1) paint(color, x * C, y * C, C - gap, (C - gap) * (1 + streak * 3))
+        else square(x, y, color)
       }
     }
 
@@ -673,33 +682,64 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     })
   }
 
-  // The bird sits above the wordmark in the hero, and flies into the nav's
-  // home link as you scroll. The nav's own <img> takes over once it lands.
+  // The bird sits above the wordmark in the hero. Scroll, and it lifts,
+  // folds its wings and dives into the next section, where its pixels become
+  // that section's shape; scroll back and it climbs out again (divePose in
+  // bird.ts is a pure function of progress). The nav's own bird fades in
+  // once the hero is mostly gone. Reduced motion just swaps them at halfway.
   function drawBird(now: number, p: number) {
-    if (!bird || !birdSlot || !home || !homeImg) return
-    let k = reduced ? (p < 0.5 ? 0 : 1) : easeInOut(clamp01(p / 0.85))
-    home.style.opacity = k >= 1 ? '1' : '0'
-    if (k >= 1) return
-
+    if (!bird || !birdSlot || !home) return
+    home.style.opacity = p >= (reduced ? 0.5 : 0.4) ? '1' : '0'
+    let pose = divePose(reduced ? (p < 0.5 ? 0 : 1) : p)
+    let s = C / 2
     let a = birdSlot.getBoundingClientRect()
-    let b = homeImg.getBoundingClientRect()
-    let s0 = C / 2
-    let s1 = b.height / bird.h
-    let s = lerp(s0, s1, k)
-    // the hero scrolls away under it, so it keeps clear of the top edge,
-    // then swoops down a little on its way to the nav
-    let x = lerp(a.left + (a.width - bird.w * s0) / 2, b.left, k)
-    let y = lerp(Math.max(a.top + (a.height - bird.h * s0) / 2, b.bottom + C), b.top, k) + Math.sin(Math.PI * k) * H * 0.08
+    let stage = sceneList[1]?.querySelector('[data-stage]')?.getBoundingClientRect()
+    // where the dive starts (the perch, kept clear of the top edge as the
+    // hero scrolls away) and ends (the next section's stage)
+    let at = (q: ReturnType<typeof divePose>) => {
+      let x0 = a.left + (a.width - bird!.w * s) / 2
+      let y0 = Math.max(a.top + (a.height - bird!.h * s) / 2, 80) + q.lift * s
+      let x1 = stage ? stage.left + stage.width / 2 - (bird!.w * s) / 2 : x0
+      let y1 = stage ? stage.top + stage.height * 0.3 : y0 + H
+      return [lerp(x0, x1, q.travel), lerp(y0, y1, q.travel)]
+    }
+    // the impact: a ripple where it plunges in, once per pass
+    if (!reduced && lastP < 0.62 && p >= 0.62) {
+      let [ix, iy] = at(divePose(0.62))
+      ripples.push({ x: Math.floor(ix / C) + 2, y: Math.floor(iy / C) + 2, at: now })
+      splash(Math.floor(ix / C) + 2, Math.floor(iy / C) + 2, 6)
+    }
+    lastP = p
+    if (!pose.visible) return
+
+    let [x, y] = at(pose)
     let g = s >= 3 ? gap / 2 : 0
     let intro = reduced ? 99 : (now - bootAt) / 1000
 
+    // a neon trail: the same dive, a little earlier
+    if (pose.travel > 0.02) {
+      for (let i = 1; i <= 10; i++) {
+        let [tx, ty] = at(divePose(p - i * 0.012))
+        paint(css(mix(palette.sky, palette.bg, i / 11)), tx + bird.w * s * 0.5, ty + bird.h * s * 0.4, Math.round(s * 1.6))
+      }
+    }
+
     // Wings: hold the logo's pose half a second, then one beat (four frames).
-    // A click flutters: beats four times faster for 0.6s, with a hop.
-    // Reduced motion holds still, mid-beat.
+    // A click flutters: beats four times faster for 0.6s, with a hop. In the
+    // dive the wings fold and the bird tips nose-down. Reduced motion holds
+    // still, mid-beat.
     let since = now - flutterAt
+    let diving = pose.wings > 0
     let frame = reduced ? 1 : since < 600 ? Math.floor(since / 50) % 4 : now % 1000 < 500 ? 0 : Math.floor((now % 500) / 125)
     let cells = birdFrames[frame] ?? bird.cells
-    y += LIFT[frame] * s - (since < 600 ? Math.sin((Math.PI * since) / 600) * 6 * s : 0)
+    if (diving) {
+      let wings = Math.round(pose.wings / 5) * 5
+      let pitch = Math.round(pose.pitch / 5) * 5
+      let key = `${wings}|${pitch}`
+      cells = diveFrames.get(key) ?? diveFrames.set(key, turnBird(flapFrame(bird.cells, wings, 0.85), pitch)).get(key)!
+      frame = 0
+    }
+    y += (diving ? 0 : LIFT[frame] * s) - (since < 600 ? Math.sin((Math.PI * since) / 600) * 6 * s : 0)
     let flash = !reduced && since < 350
     birdBox = { x, y, w: bird.w * s, h: bird.h * s }
 
@@ -707,7 +747,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // it scatter and settle back.
     let headX = x + 31 * s
     let headY = y + 12 * s
-    let near = !reduced && intro >= 1.6 && k < 0.2 && pointer && Math.hypot(pointer.x - headX, pointer.y - headY) < 320
+    let near = !reduced && intro >= 1.6 && !diving && pointer && Math.hypot(pointer.x - headX, pointer.y - headY) < 320
     let hdx = near && pointer!.x > headX + 30 ? 1 : 0
     let hdy = near ? (pointer!.y < headY - 30 ? -1 : pointer!.y > headY + 30 ? 1 : 0) : 0
     let reach = 9 * s
@@ -738,7 +778,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // in, so it never scatters away from it. Dark flavors don't need it.
     if (palette.light && intro >= 1.6) {
       let ring = css(mix(palette.text, palette.bg, 0.1))
-      for (let c of birdRings[frame] ?? []) {
+      for (let c of diving ? outline(cells) : (birdRings[frame] ?? [])) {
         let at = place(c)
         if (at) {
           let [px, py] = nudge(c, at)
@@ -767,7 +807,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     feathers = feathers.filter((fe) => fe.life > 0)
     for (let sp of sparks) paint(css(mix(palette.crest, palette.bg, 1 - sp.life / 50)), sp.x, sp.y, Math.max(2, Math.round(C * 0.6)))
 
-    if (recording && k < 0.2 && Math.random() < 0.45) {
+    if (recording && !diving && Math.random() < 0.45) {
       sparks.push({
         x: x + bird.w * s,
         y: y + bird.h * s * 0.24,

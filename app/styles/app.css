@@ -431,8 +431,9 @@ html.js .no-js-only {
   filter: drop-shadow(1px 0 0 var(--text)) drop-shadow(-1px 0 0 var(--text)) drop-shadow(0 1px 0 var(--text))
     drop-shadow(0 -1px 0 var(--text));
 }
-/* the pixel bird flies into the home link; the field shows it when it lands */
+/* the nav bird fades in once the hero's bird has dived into the page */
 html.js [data-flies] {
+  transition: opacity 0.3s;
   opacity: 0;
 }
 
