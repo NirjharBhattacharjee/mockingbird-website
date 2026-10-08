@@ -687,11 +687,14 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // folds its wings and dives into the next section, where its pixels become
   // that section's shape; scroll back and it climbs out again (divePose in
   // bird.ts is a pure function of progress). The nav's own bird fades in
-  // once the hero is mostly gone. Reduced motion just swaps them at halfway.
+  // once the hero is mostly gone. With reduced motion there is no dive: the
+  // hero bird fades out as the nav bird fades in, as far as you've scrolled.
   function drawBird(now: number, p: number) {
     if (!bird || !birdSlot || !home) return
-    home.style.opacity = p >= (reduced ? 0.5 : 0.4) ? '1' : '0'
-    let pose = divePose(reduced ? (p < 0.5 ? 0 : 1) : p)
+    let fade = reduced ? clamp01((p - 0.4) / 0.2) : 0
+    home.style.opacity = reduced ? String(fade) : p >= 0.4 ? '1' : '0'
+    let pose = divePose(reduced ? 0 : p)
+    if (fade === 1) return
     let s = C / 2
     let a = birdSlot.getBoundingClientRect()
     let stage = sceneList[1]?.querySelector('[data-stage]')?.getBoundingClientRect()
@@ -783,7 +786,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let at = place(c)
         if (at) {
           let [px, py] = nudge(c, at)
-          paint(ring, px, py, s)
+          paint(fade ? css(mix(mix(palette.text, palette.bg, 0.1), palette.bg, fade)) : ring, px, py, s)
         }
       }
     }
@@ -794,7 +797,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let color = palette[c.role]
       if (flash && c.wing) color = palette.crest
       else if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
-      paint(css(color), px, py, s - g)
+      paint(css(fade ? mix(color, palette.bg, fade) : color), px, py, s - g)
     }
 
     // feathers from a flutter, and the notes leaving the beak while you talk,
