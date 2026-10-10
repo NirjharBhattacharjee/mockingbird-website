@@ -12,6 +12,8 @@ export interface Cell {
   group: number
   /** depth in cells, toward the viewer; flat shapes leave it out */
   z?: number
+  /** how far into the distance, 1-3: darkens it like depth does */
+  fade?: number
   /** on a ring around the middle: it orbits there, always facing you */
   ring?: { radius: number; angle: number }
 }
@@ -26,7 +28,6 @@ const ICON = {
   magic: '\uf0d0',
   cursor: '\uf246',
   terminal: '\uf489',
-  heart: '\uf004',
 }
 
 /** Resolves once the shapes' glyphs can be drawn on a canvas. */
@@ -143,6 +144,8 @@ export const MOTION: Record<string, Motion> = {
   pipeline: { sway: 0.6, tilt: 0.55, orbit: (2 * Math.PI) / 24 },
   // the lock turns like the Fn key, and holds still when touched
   lock: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
+  // the road stays put: you're driving down it
+  road: {},
 }
 
 /**
@@ -324,33 +327,50 @@ export function buildShape(name: string, size: number, logo: HTMLImageElement | 
       return extrude(face, Math.max(4, Math.round(size * 0.08)))
     }
     case 'road': {
-      // a road running off to the horizon: edges converging, the center dashed
-      let edge = (ctx: CanvasRenderingContext2D, s: number, from: number, to: number) => {
-        ctx.lineWidth = Math.max(1, s * 0.035)
-        ctx.beginPath()
-        ctx.moveTo(s * from, s)
-        ctx.lineTo(s * to, s * 0.18)
-        ctx.stroke()
+      // A road running to a vanishing point 40% down: blue lane edges, yellow
+      // center dashes (group 1, they move toward you), green fields that thin
+      // into the distance in 4 steps, and a band of light on the horizon.
+      let cells: Cell[] = []
+      let horizon = Math.round(size * 0.4)
+      for (let y = horizon; y < size; y++) {
+        let q = (y - horizon) / (size - horizon)
+        let half = q * size * 0.42
+        let line = Math.max(0.6, q * size * 0.025)
+        let fade = Math.min(3, Math.floor((1 - q) * 4))
+        for (let x = 0; x < size; x++) {
+          let d = Math.abs(x + 0.5 - size / 2)
+          // the horizon and fields thin out toward the sides, so the world has no hard edge
+          let edge = Math.min(1, (size / 2 - d) / (size * 0.12))
+          if (y < horizon + 2) {
+            if (Math.random() < edge) cells.push({ x, y, role: 'sky', group: 0 })
+          }
+          else if (Math.abs(d - half) < line) cells.push({ x, y, role: 'blue', group: 0, fade })
+          else if (d < line * 0.7) cells.push({ x, y, role: 'yellow', group: 1, fade })
+          else if (d > half + line && Math.random() < (0.06 + 0.5 * q) * edge)
+            cells.push({ x, y, role: 'green', group: 0, fade })
+        }
       }
-      return rasterize(size, [
-        {
-          role: 'blue',
-          draw: (ctx, s) => {
-            edge(ctx, s, 0.02, 0.44)
-            edge(ctx, s, 0.98, 0.56)
-          },
-        },
-        {
-          role: 'yellow',
-          // dashes shrink toward the horizon
-          draw: (ctx, s) => {
-            for (let y = s, h = s * 0.13; y > s * 0.24; y -= h * 1.9, h *= 0.72) ctx.fillRect(s * 0.5 - h / 4, y - h, h / 2, h)
-          },
-        },
-      ])
+      return cells
     }
-    case 'heart':
-      return rasterize(size, [icon(ICON.heart, 'red', 0.8)])
+    case 'heart': {
+      // The classic heart curve, (x² + y² − 1)³ ≤ x²y³, shaded as if lit from
+      // the upper left: a glossy highlight on the left lobe, the lower right
+      // falling into shadow.
+      let cells: Cell[] = []
+      let k = size * 0.42
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          let hx = (x + 0.5 - size / 2) / k
+          let hy = (size * 0.555 - y - 0.5) / k
+          if ((hx * hx + hy * hy - 1) ** 3 > hx * hx * hy ** 3) continue
+          // shading bands curve round the light, so the surface reads as round
+          let gloss = Math.hypot((hx + 0.6) * 0.8, (hy - 0.65) * 1.5) < 0.16
+          let dark = Math.hypot(hx + 0.5, hy - 0.6)
+          cells.push({ x, y, role: gloss ? 'crest' : 'red', group: 0, fade: dark > 1.55 ? 2 : dark > 1.2 ? 1 : undefined })
+        }
+      }
+      return cells
+    }
     default:
       return []
   }

@@ -4,7 +4,7 @@
 export type RGB = [number, number, number]
 
 /** Colors a shape's cells can take. */
-export type Role = 'sky' | 'teal' | 'tealDeep' | 'blue' | 'mauve' | 'lavender' | 'peach' | 'green' | 'yellow' | 'red' | 'mid'
+export type Role = 'sky' | 'teal' | 'tealDeep' | 'blue' | 'mauve' | 'lavender' | 'peach' | 'green' | 'yellow' | 'red' | 'mid' | 'crest'
 
 export interface Palette extends Record<Role, RGB> {
   light: boolean
