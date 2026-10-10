@@ -189,6 +189,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // until it snaps shut at shutAt
   let shackleOpen = 0
   let shutAt = -1e9
+  let clicked = true
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -202,8 +203,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // the wave field: two height buffers, stepped with a damped wave equation
   let wave = new Float32Array(0)
   let wavePrev = new Float32Array(0)
-  // the cells the road or heart covers: their waves bounce off its edge
+  // the cells the road or heart covers, each row filled from its leftmost
+  // to its rightmost pixel: their waves bounce off its edge
   let inside = new Uint8Array(0)
+  let spanL = new Int32Array(0)
+  let spanR = new Int32Array(0)
   let bounded = false
   // how far down the road you've come, in dash lengths
   let roadAt = 0
@@ -299,6 +303,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     wave = new Float32Array(cols * rows)
     wavePrev = new Float32Array(cols * rows)
     inside = new Uint8Array(cols * rows)
+    spanL = new Int32Array(rows)
+    spanR = new Int32Array(rows)
     buildFormations()
     requestDraw()
   }
@@ -334,6 +340,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     if (key === 'local') {
       shackleOpen = 0.07
       shutAt = now + MORPH_MS + 400
+      clicked = false
     }
   }
 
@@ -478,6 +485,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         if (active === 'local' && lock && now > shutAt && hits(lock, e.clientX, e.clientY)) {
           shackleOpen = 0.035
           shutAt = now + 140
+          clicked = false
         }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
@@ -776,7 +784,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let since = now - shutAt
     let lift = reduced || active !== 'local' ? 0 : since < 0 ? shackleOpen : since < 90 ? shackleOpen * (1 - (since / 90) ** 2) : 0
     lift = Math.round(lift * f.size.h)
-    if (active === 'local' && !reduced && since >= 90 && since - dt < 90) splash(Math.floor(cx / C), Math.floor(cy / C), 4)
+    if (active === 'local' && !reduced && since >= 90 && !clicked) {
+      clicked = true
+      splash(Math.floor(cx / C), Math.floor(cy / C), 4)
+    }
     // the road's dashes run toward you as you scroll (and drift on their
     // own); the heart beats once a second, a cell bigger on the beat
     let road = active === 'next' || active === 'fly'
@@ -784,7 +795,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let drive = reduced && !flight.on ? 0 : scrollY / 240 + roadAt
     let beat = !reduced && active === 'involved' && now % 1000 < 140 ? 1 / half : 0
     bounded = road || active === 'involved'
-    if (bounded) inside.fill(0)
+    spanL.fill(cols)
+    spanR.fill(-1)
     if (orbit) {
       stageAt = [0, 1, 2, 3].map((i) => {
         let ra = (i * Math.PI) / 2 + f.orbit
@@ -881,7 +893,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         // ride the wave field: slope moves the pixel, crests catch the light
         let gi = Math.floor(y / C) * cols + Math.floor(x / C)
         if (c && gi > cols && gi < wave.length - cols) {
-          inside[gi] = 1
+          let gy = Math.floor(gi / cols)
+          spanL[gy] = Math.min(spanL[gy], gi % cols)
+          spanR[gy] = Math.max(spanR[gy], gi % cols)
           x += clamp(wave[gi + 1] - wave[gi - 1], 1.5) * cell
           y += clamp(wave[gi + cols] - wave[gi - cols], 1.5) * cell
           if (wave[gi] > 0.6) color = palette.crest
@@ -934,6 +948,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
     flush(fx)
     for (let [color, nx, ny, size] of near) paint(color, nx, ny, size)
+    if (bounded) {
+      inside.fill(0)
+      for (let y = 0; y < rows; y++) if (spanR[y] >= spanL[y]) inside.fill(1, y * cols + spanL[y], y * cols + spanR[y] + 1)
+    }
   }
 
   // The last scene: the bird from behind, perched over the road until you
@@ -1120,11 +1138,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       startGlitch(now)
       nextAutoGlitch = now + 3500 + Math.random() * 4000
     }
-    if (!reduced) stepWave()
     drawWorld(now)
     drawBackground(now, p)
     drawParticles(now, dt)
     drawFlight(now, dt)
+    // after the shapes, so a bounded shape's waves use this frame's outline
+    if (!reduced) stepWave()
     drawBird(now, p)
     flush(fx)
     if (glowOn) {
