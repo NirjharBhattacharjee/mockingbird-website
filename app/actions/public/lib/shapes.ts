@@ -26,7 +26,6 @@ const ICON = {
   magic: '\uf0d0',
   cursor: '\uf246',
   terminal: '\uf489',
-  lock: '\uf023',
   heart: '\uf004',
 }
 
@@ -142,6 +141,8 @@ export const MOTION: Record<string, Motion> = {
   fn: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
   // the bird in the middle sways; the four stages orbit it once every 24s
   pipeline: { sway: 0.6, tilt: 0.55, orbit: (2 * Math.PI) / 24 },
+  // the lock turns like the Fn key, and holds still when touched
+  lock: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
 }
 
 /**
@@ -264,8 +265,64 @@ export function buildShape(name: string, size: number, logo: HTMLImageElement | 
     }
     case 'terminal':
       return rasterize(size, [icon(ICON.terminal, 'green')])
-    case 'lock':
-      return rasterize(size, [icon(ICON.lock, 'yellow', 0.8)])
+    case 'lock': {
+      // A padlock: a riveted body with a keyhole shaped like the bird, and a
+      // shackle (group 1, so it can lift) with a peach highlight down one side.
+      let shackle = (ctx: CanvasRenderingContext2D, s: number, r: number) => {
+        ctx.beginPath()
+        ctx.moveTo(s * 0.5 - r, s * 0.5)
+        ctx.arc(s * 0.5, s * 0.3, r, Math.PI, 0)
+        ctx.lineTo(s * 0.5 + r, s * 0.5)
+      }
+      let face = rasterize(size, [
+        {
+          role: 'yellow',
+          group: 1,
+          draw: (ctx, s) => {
+            ctx.lineWidth = s * 0.075
+            shackle(ctx, s, s * 0.22)
+            ctx.stroke()
+          },
+        },
+        {
+          role: 'peach',
+          group: 1,
+          draw: (ctx, s) => {
+            ctx.lineWidth = s * 0.018
+            ctx.beginPath()
+            ctx.moveTo(s * 0.25, s * 0.5)
+            ctx.arc(s * 0.5, s * 0.3, s * 0.25, Math.PI, Math.PI * 1.45)
+            ctx.stroke()
+          },
+        },
+        {
+          role: 'yellow',
+          draw: (ctx, s) => {
+            ctx.beginPath()
+            ctx.roundRect(s * 0.16, s * 0.46, s * 0.68, s * 0.44, s * 0.06)
+            ctx.fill()
+            // the keyhole: the bird cut out of the body, or a classic one
+            ctx.globalCompositeOperation = 'destination-out'
+            let k = s * 0.17
+            if (logo) ctx.drawImage(logo, s * 0.5 - k / 2, s * 0.68 - k / 2, k, (k * logo.naturalHeight) / logo.naturalWidth)
+            else {
+              ctx.beginPath()
+              ctx.arc(s * 0.5, s * 0.64, s * 0.04, 0, Math.PI * 2)
+              ctx.rect(s * 0.485, s * 0.64, s * 0.03, s * 0.12)
+              ctx.fill()
+            }
+            ctx.globalCompositeOperation = 'source-over'
+          },
+        },
+        {
+          role: 'peach',
+          draw: (ctx, s) => {
+            for (let [x, y] of [[0.22, 0.52], [0.78, 0.52], [0.22, 0.84], [0.78, 0.84]]) ctx.fillRect(s * (x - 0.015), s * (y - 0.015), s * 0.03, s * 0.03)
+          },
+        },
+      ])
+      return extrude(face, Math.max(4, Math.round(size * 0.08)))
+    }
     case 'road': {
       // a road running off to the horizon: edges converging, the center dashed
       let edge = (ctx: CanvasRenderingContext2D, s: number, from: number, to: number) => {

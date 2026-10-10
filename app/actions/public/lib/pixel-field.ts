@@ -184,6 +184,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // when a "how it works" tab was picked, and where each stage is on screen
   let pickedAt = -1e9
   let stageAt: { x: number; y: number; r: number }[] = []
+  // the lock's shackle: how far it's open (a share of the lock's height)
+  // until it snaps shut at shutAt
+  let shackleOpen = 0
+  let shutAt = -1e9
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -316,6 +320,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     })
     active = key
     morphAt = now
+    // arriving at the lock: the shackle hangs open, then drops shut once
+    // the pixels have settled
+    if (key === 'local') {
+      shackleOpen = 0.07
+      shutAt = now + MORPH_MS + 400
+    }
   }
 
   // The wordmark's first appearance: pixels stream in from the upper right.
@@ -408,6 +418,13 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     return x >= o.x && y >= o.y && x < o.x + f.size.w * f.cell && y < o.y + f.size.h * f.cell
   }
 
+  /** Whether (x, y) is within a shape's square. */
+  function hits(f: Formation, x: number, y: number) {
+    let r = f.anchor.getBoundingClientRect()
+    let reach = (f.size.w * f.cell) / 2
+    return Math.abs(x - (r.left + r.width / 2)) < reach && Math.abs(y - (r.top + r.height / 2)) < reach
+  }
+
   if (!reduced) {
     window.addEventListener(
       'pointermove',
@@ -446,6 +463,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         splash(x, y, 3)
         let b = birdBox
         if (b && e.clientX >= b.x && e.clientX < b.x + b.w && e.clientY >= b.y && e.clientY < b.y + b.h) flutter(now)
+        // pressing the lock lifts the shackle and snaps it shut again
+        let lock = formations.get('local')
+        if (active === 'local' && lock && now > shutAt && hits(lock, e.clientX, e.clientY)) {
+          shackleOpen = 0.035
+          shutAt = now + 140
+        }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
@@ -467,10 +490,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         if (hit >= 0) document.querySelectorAll<HTMLInputElement>('#how input[name="how"]')[hit]?.click()
       }
       let key = formations.get('demo')
-      if (active !== 'demo' || !key || keyPointer !== null) return
-      let r = key.anchor.getBoundingClientRect()
-      let reach = (key.size.w * key.cell) / 2
-      if (Math.abs(e.clientX - (r.left + r.width / 2)) >= reach || Math.abs(e.clientY - (r.top + r.height / 2)) >= reach) return
+      if (active !== 'demo' || !key || keyPointer !== null || !hits(key, e.clientX, e.clientY)) return
       keyPointer = e.pointerId
       pointer = { x: e.clientX, y: e.clientY }
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
@@ -732,6 +752,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       else f.orbit += orbit * (dt / 1000)
     }
     let pulse = (now / 1000) * 1.2
+    // the shackle falls shut in 90ms (whole cells), and lands with a click:
+    // a jolt through the wave field and a yellow ring
+    let since = now - shutAt
+    let lift = reduced || active !== 'local' ? 0 : since < 0 ? shackleOpen : since < 90 ? shackleOpen * (1 - (since / 90) ** 2) : 0
+    lift = Math.round(lift * f.size.h)
+    if (active === 'local' && !reduced && since >= 90 && since - dt < 90) splash(Math.floor(cx / C), Math.floor(cy / C), 4)
     if (orbit) {
       stageAt = [0, 1, 2, 3].map((i) => {
         let ra = (i * Math.PI) / 2 + f.orbit
@@ -760,7 +786,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       if (c) {
         // turn the cell around the shape's vertical axis, lean it, project
         let u = c.x - half
-        let v = c.y - f.size.h / 2 + pressed * 2
+        let v = c.y - f.size.h / 2 + pressed * 2 - (c.group === 1 ? lift : 0)
         let z0 = c.z ?? 0
         let x1 = u * cos + z0 * sin
         let z1 = -u * sin + z0 * cos
@@ -857,6 +883,19 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         paint(shade(color, 3, dim), Math.round(lastX), Math.round(lastY), size)
       }
     })
+    let ring = (since - 90) / 700
+    if (active === 'local' && !reduced && ring >= 0 && ring < 1) {
+      let radius = Math.round(((half * cell) / C) * (0.5 + ring))
+      let color = css(mix(palette.yellow, palette.bg, ring))
+      let gx = Math.round(cx / C)
+      let gy = Math.round(cy / C)
+      for (let i = -radius; i <= radius; i += 2) {
+        square(gx + i, gy - radius, color)
+        square(gx + i, gy + radius, color)
+        square(gx - radius, gy + i, color)
+        square(gx + radius, gy + i, color)
+      }
+    }
     flush(fx)
     for (let [color, nx, ny, size] of near) paint(color, nx, ny, size)
   }
