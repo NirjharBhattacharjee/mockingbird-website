@@ -22,6 +22,7 @@
 import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
 import { type Palette, type RGB, type Role, bands, hex, mix, readPalette, rgb } from './palette.ts'
 import { FLAP, LIFT, type BirdCell, divePose, flapFrame, turnBird } from './bird.ts'
+import { BACK_FRAMES, NOTE, createFlight } from './flight.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
 import { AMBIENT, type Ambient, type Cell, MOTION, type Motion, RING, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
@@ -208,6 +209,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let spanL = new Int32Array(0)
   let spanR = new Int32Array(0)
   let bounded = false
+  // how far down the road you've come, in dash lengths
+  let roadAt = 0
   let ripples: { x: number; y: number; at: number }[] = []
   let sparks: { x: number; y: number; vx: number; vy: number; life: number }[] = []
   let glitches = new Map<number, Glitch>()
@@ -534,6 +537,15 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     { signal },
   )
 
+  // The last scene's flight (flight.ts). With reduced motion the canvas only
+  // animates while you're flying.
+  let flight = createFlight((on) => {
+    if (!reduced) return
+    running = on
+    if (on) requestAnimationFrame(frame)
+    else requestDraw()
+  }, signal)
+
   // ---------- drawing ----------
 
   // Color strings are cached (by packed rgb, and by rgb + depth + dimmed),
@@ -778,9 +790,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
     // the road's dashes run toward you as you scroll (and drift on their
     // own); the heart beats once a second, a cell bigger on the beat
-    let drive = reduced ? 0 : scrollY / 240 + now / 2500
+    let road = active === 'next' || active === 'fly'
+    roadAt += dt / (flight.on ? 300 : 2500)
+    let drive = reduced && !flight.on ? 0 : scrollY / 240 + roadAt
     let beat = !reduced && active === 'involved' && now % 1000 < 140 ? 1 / half : 0
-    bounded = active === 'next' || active === 'involved'
+    bounded = road || active === 'involved'
     spanL.fill(cols)
     spanR.fill(-1)
     if (orbit) {
@@ -897,7 +911,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       if (!c && k === 1) return
       // a dash is lit for half of each stretch of road; the stretches shrink
       // toward the horizon, 1 / distance
-      if (c && active === 'next' && c.group === 1 && k === 1) {
+      if (c && road && c.group === 1 && k === 1) {
         let q = (c.y / f.size.h - 0.4) / 0.6
         if ((((0.6 / q - drive) % 1) + 1) % 1 < 0.5) return
       }
@@ -937,6 +951,39 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     if (bounded) {
       inside.fill(0)
       for (let y = 0; y < rows; y++) if (spanR[y] >= spanL[y]) inside.fill(1, y * cols + spanL[y], y * cols + spanR[y] + 1)
+    }
+  }
+
+  // The last scene: the bird from behind, perched over the road until you
+  // take off, then flying with a neon trail, rippling the fields when it
+  // flies low, while notes drift toward it from the horizon.
+  function drawFlight(now: number, dt: number) {
+    let f = formations.get('fly')
+    if (active !== 'fly' || !f) return
+    let s = Math.max(2, Math.round(C * 0.8))
+    let pad = s > 3 ? 1 : 0
+    let r = f.anchor.getBoundingClientRect()
+    if (flight.on) flight.step(now, dt, W, H)
+    let x = flight.on ? flight.x : r.left + r.width / 2
+    let y = flight.on ? flight.y : r.top + r.height * 0.82
+    if (flight.on) flight.trail.forEach((t, i) => paint(css(mix(palette.mauve, palette.bg, i / 16)), Math.round(t.x - s / 2), Math.round(t.y + 3 * s), s - pad))
+    if (flight.on && !reduced && y > H * 0.72 && Math.random() < 0.3) splash(Math.floor(x / C), Math.floor((y + 4 * s) / C), 1.2)
+    for (let n of flight.on ? flight.notes : []) {
+      // a caught note flashes in the wordmark's color, then it's gone
+      let caught = now - n.hitAt
+      if (caught >= 300 && n.hitAt > 0) continue
+      let ns = Math.max(2, Math.round(s * (0.3 + 0.7 * n.p)))
+      let nx = W / 2 + n.nx * (W / 2) * n.p
+      let ny = H * 0.4 + (n.ny * H - H * 0.4) * n.p
+      let color = css(caught < 300 ? palette.crest : mix(palette.sky, palette.bg, 0.6 * (1 - n.p)))
+      for (let c of NOTE) paint(color, Math.round(nx + (c.x - 2) * ns), Math.round(ny + (c.y - 3) * ns), ns - pad)
+    }
+    let since = now - flight.flapAt
+    let pose = reduced ? 1 : since < 280 ? [2, 1, 0, 1][Math.floor(since / 70) % 4] : [0, 1, 2, 1][Math.floor(now / 180) % 4]
+    // banking into a turn tips the wings
+    let bank = Math.max(-1, Math.min(1, flight.vx / 12))
+    for (let c of BACK_FRAMES[pose]) {
+      paint(css(palette[c.role]), Math.round(x + c.x * s), Math.round(y + (c.y + Math.round(c.x * bank * 0.35)) * s), s - pad)
     }
   }
 
@@ -1094,6 +1141,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     drawWorld(now)
     drawBackground(now, p)
     drawParticles(now, dt)
+    drawFlight(now, dt)
     // after the shapes, so a bounded shape's waves use this frame's outline
     if (!reduced) stepWave()
     drawBird(now, p)

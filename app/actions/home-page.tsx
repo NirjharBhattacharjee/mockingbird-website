@@ -24,6 +24,7 @@ const SCENES = [
   { id: 'local', label: 'Stays local', accent: 'var(--yellow)' },
   { id: 'next', label: "What's next", accent: 'var(--blue)' },
   { id: 'involved', label: 'Get involved', accent: 'var(--peach)' },
+  { id: 'fly', label: 'Fly', accent: 'var(--lavender)' },
 ]
 
 const hue = (id: string) => SCENES.find((s) => s.id === id)!.accent
@@ -42,6 +43,7 @@ export function HomePage() {
         <StaysLocal />
         <WhatsNext />
         <GetInvolved />
+        <Fly />
       </main>
       <Footer />
       <Toast />
@@ -531,5 +533,37 @@ function GetInvolved() {
         ))}
       </ul>
     </Scene>
+  )
+}
+
+// The last scene: fly the bird over the road (public/lib/flight.ts). Nothing
+// is captured until you take off.
+function Fly() {
+  return () => (
+    <>
+      <Scene id="fly" shape="road" hue={hue('fly')}>
+        <SceneHead title="Take it for a spin" lede="Fly the bird down the road and catch the notes. There's no score to beat and no way to lose." />
+        <p class="mb-6 text-[14px] text-soft">
+          Arrow keys or WASD steer, Space flaps, Esc lands. With a mouse the bird follows the cursor; on a phone, drag to steer and
+          tap to flap.
+        </p>
+        <button type="button" data-fly class="btn-primary">
+          <span aria-hidden="true">[space]</span> take off
+        </button>
+      </Scene>
+      <div id="fly-hud" hidden class="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+        <p class="flex items-center gap-4 border border-surface0 bg-mantle/90 px-3 py-2 text-[13px] backdrop-blur">
+          <span>
+            notes <output class="text-sky">0</output>
+          </span>
+          <button type="button" data-land class="chip">
+            <span aria-hidden="true" class="text-sky">
+              [esc]
+            </span>
+            land
+          </button>
+        </p>
+      </div>
+    </>
   )
 }
