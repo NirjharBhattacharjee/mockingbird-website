@@ -19,6 +19,57 @@ export const FLAP = [0, 38, 72, 38]
 /** How far the body lifts on each frame, in bird cells: the downstroke lifts it. */
 export const LIFT = [0, 0, -1, 0]
 
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+const easeIn = (t: number) => t * t * t
+
+export interface DivePose {
+  /** cells, negative is up: the little lift before the dive */
+  lift: number
+  /** wing angle, degrees: 0 is the logo's pose, 110 folded along the body */
+  wings: number
+  /** degrees nose-down */
+  pitch: number
+  /** 0 at the perch, 1 at the next section's stage */
+  travel: number
+  visible: boolean
+}
+
+/**
+ * The bird's dive out of the hero as a pure function of scroll progress `p`
+ * (0 at the top, 1 once the hero has scrolled by): it lifts, folds its
+ * wings, tips nose-down and drops into the next section. No state, so
+ * scrolling back up plays it in reverse.
+ */
+export function divePose(p: number): DivePose {
+  let lift = p < 0.08 ? -2 * (p / 0.08) : -2 * (1 - clamp01((p - 0.08) / 0.2))
+  return {
+    lift,
+    wings: 110 * clamp01((p - 0.08) / 0.2),
+    pitch: 55 * easeIn(clamp01((p - 0.08) / 0.3)),
+    travel: easeIn(clamp01((p - 0.12) / 0.48)),
+    visible: p < 0.62,
+  }
+}
+
+/** The whole bird turned `degrees` clockwise (nose down) around its middle. */
+export function turnBird<R>(cells: BirdCell<R>[], degrees: number, center = { x: 20, y: 25 }): BirdCell<R>[] {
+  if (!degrees) return cells
+  let byKey = new Map(cells.map((c) => [`${c.x},${c.y}`, c]))
+  let a = (-degrees * Math.PI) / 180
+  let cos = Math.cos(a)
+  let sin = Math.sin(a)
+  let out: BirdCell<R>[] = []
+  for (let y = -20; y <= 70; y++) {
+    for (let x = -30; x <= 70; x++) {
+      let dx = x - center.x
+      let dy = y - center.y
+      let src = byKey.get(`${Math.round(center.x + dx * cos - dy * sin)},${Math.round(center.y + dx * sin + dy * cos)}`)
+      if (src) out.push({ ...src, x, y })
+    }
+  }
+  return out
+}
+
 /**
  * The bird with its wings turned `degrees` around the shoulder, and pulled in
  * by `reach` (foreshortening as the wing sweeps past the body).
