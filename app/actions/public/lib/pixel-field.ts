@@ -181,8 +181,6 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let motes: Mote[] = Array.from({ length: 240 }, () => ({ x: 0, y: 0, vx: 0, vy: 0 }))
   let diveFrames = new Map<string, BirdCell<Role>[]>()
   let lastP = 0
-  // the Fn key is being held down with the pointer
-  let keyHeld = false
   // when a "how it works" tab was picked, and where each stage is on screen
   let pickedAt = -1e9
   let stageAt: { x: number; y: number; r: number }[] = []
@@ -430,13 +428,6 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       },
       { signal },
     )
-    let release = () => {
-      if (!keyHeld) return
-      keyHeld = false
-      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }))
-    }
-    window.addEventListener('pointerup', release, { signal })
-    window.addEventListener('pointercancel', release, { signal })
     document.addEventListener(
       'pointerout',
       (e) => {
@@ -460,21 +451,40 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
           let hit = stageAt.findIndex((st) => Math.hypot(e.clientX - st.x, e.clientY - st.y) < st.r)
           if (hit >= 0) document.querySelectorAll<HTMLInputElement>('#how input[name="how"]')[hit]?.click()
         }
-        // pressing the Fn key is holding F: the scripted demo, no microphone
-        let key = formations.get('demo')
-        if (active === 'demo' && key) {
-          let r = key.anchor.getBoundingClientRect()
-          let reach = (key.size.w * key.cell) / 2
-          if (Math.abs(e.clientX - (r.left + r.width / 2)) < reach && Math.abs(e.clientY - (r.top + r.height / 2)) < reach) {
-            keyHeld = true
-            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
-          }
-        }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
     )
   }
+
+  // Pressing the Fn key is holding F: the scripted demo, no microphone. It's
+  // an interaction, not an animation, so it works with reduced motion too.
+  // Only the pointer that pressed it lets go, and a touch press holds the
+  // key still the way hovering does.
+  let keyPointer: number | null = null
+  window.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.target instanceof Element && e.target.closest('a, button, input, label, .panel')) return
+      let key = formations.get('demo')
+      if (active !== 'demo' || !key || keyPointer !== null) return
+      let r = key.anchor.getBoundingClientRect()
+      let reach = (key.size.w * key.cell) / 2
+      if (Math.abs(e.clientX - (r.left + r.width / 2)) >= reach || Math.abs(e.clientY - (r.top + r.height / 2)) >= reach) return
+      keyPointer = e.pointerId
+      pointer = { x: e.clientX, y: e.clientY }
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }))
+    },
+    { signal },
+  )
+  let release = (e: PointerEvent) => {
+    if (e.pointerId !== keyPointer) return
+    keyPointer = null
+    if (e.pointerType !== 'mouse') pointer = null
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: 'f' }))
+  }
+  window.addEventListener('pointerup', release, { signal })
+  window.addEventListener('pointercancel', release, { signal })
 
   // The "how it works" tabs light up their stage of the pipeline shape.
   document.addEventListener(
@@ -852,11 +862,14 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // folds its wings and dives into the next section, where its pixels become
   // that section's shape; scroll back and it climbs out again (divePose in
   // bird.ts is a pure function of progress). The nav's own bird fades in
-  // once the hero is mostly gone. Reduced motion just swaps them at halfway.
+  // once the hero is mostly gone. With reduced motion there is no dive: the
+  // hero bird fades out as the nav bird fades in, as far as you've scrolled.
   function drawBird(now: number, p: number) {
     if (!bird || !birdSlot || !home) return
-    home.style.opacity = p >= (reduced ? 0.5 : 0.4) ? '1' : '0'
-    let pose = divePose(reduced ? (p < 0.5 ? 0 : 1) : p)
+    let fade = reduced ? clamp01((p - 0.4) / 0.2) : 0
+    home.style.opacity = reduced ? String(fade) : p >= 0.4 ? '1' : '0'
+    let pose = divePose(reduced ? 0 : p)
+    if (fade === 1) return
     let s = C / 2
     let a = birdSlot.getBoundingClientRect()
     let stage = sceneList[1]?.querySelector('[data-stage]')?.getBoundingClientRect()
@@ -948,7 +961,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let at = place(c)
         if (at) {
           let [px, py] = nudge(c, at)
-          paint(ring, px, py, s)
+          paint(fade ? css(mix(mix(palette.text, palette.bg, 0.1), palette.bg, fade)) : ring, px, py, s)
         }
       }
     }
@@ -959,7 +972,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let color = palette[c.role]
       if (flash && c.wing) color = palette.crest
       else if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
-      paint(css(color), px, py, s - g)
+      paint(css(fade ? mix(color, palette.bg, fade) : color), px, py, s - g)
     }
 
     // feathers from a flutter, and the notes leaving the beak while you talk,
