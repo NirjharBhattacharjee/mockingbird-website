@@ -437,6 +437,17 @@ html.js [data-flies] {
   opacity: 0;
 }
 
+/* flying (public/lib/flight.ts): the page holds still and the panel steps aside */
+html[data-flying] {
+  overflow: hidden;
+  touch-action: none;
+}
+/* visibility, not opacity: the reveal animation holds the panel's opacity */
+html[data-flying] #fly .panel,
+html[data-flying] aside[aria-label="Sections"] {
+  visibility: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
