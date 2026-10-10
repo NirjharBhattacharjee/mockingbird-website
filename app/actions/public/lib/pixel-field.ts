@@ -188,6 +188,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // until it snaps shut at shutAt
   let shackleOpen = 0
   let shutAt = -1e9
+  let clicked = true
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -331,6 +332,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     if (key === 'local') {
       shackleOpen = 0.07
       shutAt = now + MORPH_MS + 400
+      clicked = false
     }
   }
 
@@ -475,6 +477,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         if (active === 'local' && lock && now > shutAt && hits(lock, e.clientX, e.clientY)) {
           shackleOpen = 0.035
           shutAt = now + 140
+          clicked = false
         }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
@@ -764,7 +767,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let since = now - shutAt
     let lift = reduced || active !== 'local' ? 0 : since < 0 ? shackleOpen : since < 90 ? shackleOpen * (1 - (since / 90) ** 2) : 0
     lift = Math.round(lift * f.size.h)
-    if (active === 'local' && !reduced && since >= 90 && since - dt < 90) splash(Math.floor(cx / C), Math.floor(cy / C), 4)
+    if (active === 'local' && !reduced && since >= 90 && !clicked) {
+      clicked = true
+      splash(Math.floor(cx / C), Math.floor(cy / C), 4)
+    }
     // the road's dashes run toward you as you scroll (and drift on their
     // own); the heart beats once a second, a cell bigger on the beat
     let drive = reduced ? 0 : scrollY / 240 + now / 2500
