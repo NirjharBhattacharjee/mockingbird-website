@@ -94,6 +94,8 @@ export function createFlight(onChange: (on: boolean) => void, signal: AbortSigna
   let held = new Set<string>()
   let target: { x: number; y: number } | null = null
   let tap = { at: 0, x: 0, y: 0 }
+  // a flap's lift, which also carries the bird up while the pointer steers
+  let kick = 0
   let root = document.documentElement
 
   let flight: Flight = {
@@ -134,6 +136,7 @@ export function createFlight(onChange: (on: boolean) => void, signal: AbortSigna
 
   function flap(now: number) {
     flight.vy -= 7
+    kick = 7
     flight.flapAt = now
   }
 
@@ -152,7 +155,7 @@ export function createFlight(onChange: (on: boolean) => void, signal: AbortSigna
     if (target) {
       // the pointer leads: ease toward it
       let nx = flight.x + (target.x - flight.x) * 0.08 * f
-      let ny = flight.y + (target.y - flight.y) * 0.08 * f
+      let ny = flight.y + (target.y - flight.y) * 0.08 * f - kick * f
       flight.vx = (nx - flight.x) / f
       flight.vy = (ny - flight.y) / f
     } else {
@@ -161,6 +164,7 @@ export function createFlight(onChange: (on: boolean) => void, signal: AbortSigna
       flight.vx = (flight.vx + ax * 1.2 * f) * 0.9 ** f
       flight.vy = (flight.vy + (ay * 0.9 + 0.15) * f) * 0.92 ** f
     }
+    kick *= 0.85 ** f
     flight.x = Math.min(w * 0.92, Math.max(w * 0.08, flight.x + flight.vx * f))
     flight.y = Math.min(h * 0.88, Math.max(h * 0.18, flight.y + flight.vy * f))
     flight.trail.unshift({ x: flight.x, y: flight.y })

@@ -979,7 +979,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       for (let c of NOTE) paint(color, Math.round(nx + (c.x - 2) * ns), Math.round(ny + (c.y - 3) * ns), ns - pad)
     }
     let since = now - flight.flapAt
-    let pose = reduced && !flight.on ? 1 : since < 280 ? [2, 1, 0, 1][Math.floor(since / 70) % 4] : [0, 1, 2, 1][Math.floor(now / 180) % 4]
+    let pose = reduced ? 1 : since < 280 ? [2, 1, 0, 1][Math.floor(since / 70) % 4] : [0, 1, 2, 1][Math.floor(now / 180) % 4]
     // banking into a turn tips the wings
     let bank = Math.max(-1, Math.min(1, flight.vx / 12))
     for (let c of BACK_FRAMES[pose]) {
