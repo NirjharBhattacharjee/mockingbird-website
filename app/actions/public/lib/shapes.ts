@@ -112,6 +112,23 @@ export function sampleLogo(img: HTMLImageElement, w: number): { w: number; h: nu
   return { w, h, cells }
 }
 
+/**
+ * How a scene's shape moves in 3D: `sway` turns it back and forth around its
+ * vertical axis (radians), `spin` turns it continuously (radians a second),
+ * and `holdOnTouch` eases it to face you while the pointer is over it.
+ */
+export interface Motion {
+  sway?: number
+  spin?: number
+  holdOnTouch?: boolean
+}
+
+/** What a shape does unless MOTION says otherwise: sway, and face you when touched. */
+export const SWAY: Motion = { sway: 0.22, holdOnTouch: true }
+
+/** Each shape's own motion, set as the sections get their redesigns. */
+export const MOTION: Record<string, Motion> = {}
+
 /** The one-cell ring around a shape: every empty cell touching it, diagonals included. */
 export function outline(cells: { x: number; y: number }[]): { x: number; y: number }[] {
   let key = (x: number, y: number) => `${x},${y}`

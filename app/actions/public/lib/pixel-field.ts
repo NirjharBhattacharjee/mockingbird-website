@@ -10,11 +10,19 @@
 //   into each scene's shape (the transition element), and back again.
 // - The pixel bird flies up into the nav as you scroll and becomes the home
 //   link, then flies back down when you return to the top.
+//
+// Rendering: the background goes straight onto the canvas. Shapes, the
+// wordmark and the bird go onto their own layer, which is also drawn small and
+// blurred underneath them as a neon glow (added light in the dark flavors, a
+// tinted shadow in Latte). Pixels are batched by color, one fill per color.
+// Shapes are dense (cells about 0.6 of the grid), turn in 3D with perspective
+// (sizes snap to whole pixels, brightness drops in steps with depth), and a
+// shared wave field ripples them under the pointer.
 
 import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from './events.ts'
 import { type Palette, type RGB, bands, mix, readPalette, rgb } from './palette.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
-import { type Cell, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
+import { type Cell, MOTION, type Motion, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
 const WORD = 'mockingbird'
 const WORD_COLS = measure(WORD)
@@ -33,10 +41,18 @@ interface FieldOptions {
 interface Formation {
   cells: (Cell & { letter?: number })[]
   size: { w: number; h: number }
-  /** px per cell: the wordmark has its own, larger cells */
+  /** px per cell: the wordmark has its own, larger cells, shapes smaller ones */
   cell: number
+  /** px between neighboring pixels */
+  gap: number
   anchor: HTMLElement
+  motion?: Motion
+  /** current turn around the vertical axis, radians */
+  angle: number
 }
+
+/** how far toward the background each depth step pulls a pixel's color */
+const DEPTH = [0, 0.16, 0.32, 0.48]
 
 interface Particle {
   /** where it was last drawn, px */
@@ -78,6 +94,7 @@ function hash(x: number, y: number, seed = 0): number {
 const easeOut = (t: number) => 1 - (1 - t) ** 3
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+const clamp = (t: number, max: number) => Math.min(max, Math.max(-max, t))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** Grid cell size in px, chosen so the wordmark fits the viewport. */
@@ -105,6 +122,17 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   document.body.prepend(canvas)
   signal.addEventListener('abort', () => canvas.remove())
   let ctx = canvas.getContext('2d')!
+  // the shape layer, and its small blurred copy (the glow)
+  let fg = document.createElement('canvas')
+  let fx = fg.getContext('2d')!
+  let glow = document.createElement('canvas')
+  let gx = glow.getContext('2d')!
+  let glowOn = true
+  // 1 normally; drops to 0.6 (bigger, fewer pixels) if frames run slow
+  let density = 1
+  let slowFrames = 0
+  let frameMs = 16
+  let lastFrame = 0
 
   let hero = document.getElementById('top')
   let wordSlot = document.getElementById('wordmark-slot')
@@ -134,6 +162,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let pointer: { x: number; y: number } | null = null
 
   let heat = new Float32Array(0)
+  // the wave field: two height buffers, stepped with a damped wave equation
+  let wave = new Float32Array(0)
+  let wavePrev = new Float32Array(0)
   let ripples: { x: number; y: number; at: number }[] = []
   let sparks: { x: number; y: number; vx: number; vy: number; life: number }[] = []
   let glitches = new Map<number, Glitch>()
@@ -158,19 +189,21 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     formations.clear()
     if (wordSlot) {
       let cells = layout(WORD).map((c) => ({ x: c.x, y: c.y, letter: c.letter, group: c.band, role: 'sky' as const }))
-      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, cell: WC, anchor: wordSlot })
+      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, cell: WC, gap: 0, anchor: wordSlot, angle: 0 })
     }
     for (let scene of sceneList) {
       let stage = scene.querySelector<HTMLElement>('[data-stage]')
       let shape = scene.dataset.shape
       if (!stage || !shape) continue
       let r = stage.getBoundingClientRect()
+      // dense: cells about 0.6 of the grid, so a shape has thousands of pixels
+      let cell = Math.max(3, Math.round((C * 0.6) / density))
       // big enough to frame the centered panel: wings and edges show around it
-      let size = Math.max(8, Math.floor(Math.min(r.width * 0.75, H * 0.95) / C))
+      let size = Math.max(8, Math.floor(Math.min(r.width * 0.88, H * 1.05) / cell))
       let cells = buildShape(shape, size, logo)
       // shuffle, so a morph sends pixels criss-crossing like a flock
       cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
-      formations.set(scene.id, { cells, size: { w: size, h: size }, cell: C, anchor: stage })
+      formations.set(scene.id, { cells, size: { w: size, h: size }, cell, gap: cell >= 5 ? 1 : 0, anchor: stage, motion: MOTION[shape] ?? SWAY, angle: 0 })
     }
     let need = Math.max(0, ...[...formations.values()].map((f) => f.cells.length))
     while (particles.length < need) {
@@ -200,7 +233,15 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     canvas.style.width = `${W}px`
     canvas.style.height = `${H}px`
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    fg.width = W * dpr
+    fg.height = H * dpr
+    fx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    glow.width = Math.ceil(W / 4)
+    glow.height = Math.ceil(H / 4)
+    gx.filter = 'blur(3px)'
     heat = new Float32Array(cols * rows)
+    wave = new Float32Array(cols * rows)
+    wavePrev = new Float32Array(cols * rows)
     buildFormations()
     requestDraw()
   }
@@ -265,6 +306,28 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
   }
 
+  /** Drops `strength` into the wave field around a grid cell. */
+  function splash(x: number, y: number, strength: number) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        let gx = x + dx
+        let gy = y + dy
+        if (gx > 0 && gy > 0 && gx < cols - 1 && gy < rows - 1) wave[gy * cols + gx] += strength * (dx || dy ? 0.5 : 1)
+      }
+    }
+  }
+
+  // One step of the damped wave equation over the grid.
+  function stepWave() {
+    for (let y = 1; y < rows - 1; y++) {
+      for (let x = 1; x < cols - 1; x++) {
+        let i = y * cols + x
+        wavePrev[i] = ((wave[i - 1] + wave[i + 1] + wave[i - cols] + wave[i + cols]) / 2 - wavePrev[i]) * 0.94
+      }
+    }
+    ;[wave, wavePrev] = [wavePrev, wave]
+  }
+
   function startGlitch(now: number, strong = false) {
     for (let k = 0; k < (strong ? 3 : 1); k++) {
       glitches.set(Math.floor(Math.random() * WORD.length), {
@@ -296,7 +359,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
           }
           return
         }
-        warm(Math.floor(e.clientX / C), Math.floor(e.clientY / C), Math.max(4, Math.round(56 / C)), 0.6)
+        let cx = Math.floor(e.clientX / C)
+        let cy = Math.floor(e.clientY / C)
+        warm(cx, cy, Math.max(4, Math.round(56 / C)), 0.6)
+        splash(cx, cy, 0.5)
       },
       { signal },
     )
@@ -315,6 +381,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let x = Math.floor(e.clientX / C)
         let y = Math.floor(e.clientY / C)
         ripples.push({ x, y, at: now }, { x, y, at: now + 140 })
+        splash(x, y, 3)
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
@@ -335,9 +402,50 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
 
   // ---------- drawing ----------
 
+  // Color strings are cached (by packed rgb, and by rgb + depth + dimmed),
+  // and pixels are batched by color: one path and one fill per color.
+  let strings = new Map<number, string>()
+  let shades = new Map<number, string>()
+  const pack = (c: RGB) => (c[0] << 16) | (c[1] << 8) | c[2]
+  function css(c: RGB) {
+    let k = pack(c)
+    let str = strings.get(k)
+    if (!str) {
+      if (strings.size > 4096) strings.clear()
+      strings.set(k, (str = rgb(c)))
+    }
+    return str
+  }
+  /** `c` pushed back `depth` steps, and dimmed behind a text panel. */
+  function shade(c: RGB, depth: number, dim: boolean) {
+    let k = pack(c) * 8 + depth * 2 + (dim ? 1 : 0)
+    let str = shades.get(k)
+    if (!str) {
+      if (shades.size > 8192) shades.clear()
+      shades.set(k, (str = css(mix(c, palette.bg, 1 - (1 - DEPTH[depth]) * (dim ? 0.4 : 1)))))
+    }
+    return str
+  }
+  let batch = new Map<string, number[]>()
+  function paint(color: string, x: number, y: number, size: number) {
+    let b = batch.get(color)
+    if (!b) batch.set(color, (b = []))
+    // whole pixels, so edges stay crisp (no antialiasing)
+    b.push(Math.round(x), Math.round(y), size)
+  }
+  function flush(pen: CanvasRenderingContext2D) {
+    for (let [color, b] of batch) {
+      if (!b.length) continue
+      pen.fillStyle = color
+      pen.beginPath()
+      for (let i = 0; i < b.length; i += 3) pen.rect(b[i], b[i + 1], b[i + 2], b[i + 2])
+      pen.fill()
+      b.length = 0
+    }
+  }
+
   function square(x: number, y: number, color: string) {
-    ctx.fillStyle = color
-    ctx.fillRect(x * C, y * C, C - gap, C - gap)
+    paint(color, x * C, y * C, C - gap)
   }
 
   function meterHeight(x: number, t: number, show: number) {
@@ -377,7 +485,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       }
     }
 
-    if (reduced) return
+    if (reduced) return flush(ctx)
     // ripples: expanding square rings, dithered
     for (let rp of ripples) {
       let radius = Math.floor((now - rp.at) / 38)
@@ -409,6 +517,22 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       square(i % cols, Math.floor(i / cols), h > 0.85 ? crest : h > 0.6 ? lit : h > 0.35 ? mid : dim)
       heat[i] = h * 0.93
     }
+    flush(ctx)
+  }
+
+  /** The shape's turn around its vertical axis this frame. */
+  function turn(f: Formation, now: number, dt: number, half: number, cx: number, cy: number) {
+    let m = f.motion
+    if (reduced || !m) return 0
+    let held =
+      m.holdOnTouch && pointer && Math.abs(pointer.x - cx) < half * f.cell && Math.abs(pointer.y - cy) < (f.size.h / 2) * f.cell
+    let goal = held
+      ? Math.round(f.angle / (2 * Math.PI)) * 2 * Math.PI
+      : m.spin
+        ? f.angle + m.spin * (dt / 1000)
+        : (m.sway ?? 0) * Math.sin(now / 1400)
+    f.angle += (goal - f.angle) * (m.spin && !held ? 1 : 0.08)
+    return f.angle
   }
 
   /**
@@ -426,15 +550,23 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     return Array.from(WORD, (_, letter) => bands(palette, mix(a, b, clamp01((phase - i - 0.75 - letter * 0.012) * 8))))
   }
 
-  function drawParticles(now: number) {
+  function drawParticles(now: number, dt: number) {
     let f = formations.get(active)
     if (!f) return
-    let o = origin(f)
+    let r = f.anchor.getBoundingClientRect()
+    let cx = r.left + r.width / 2
+    let cy = r.top + r.height / 2
     let isWord = active === 'top'
     let wb = isWord ? wordBands(now) : null
     let pressed = recording && f.anchor.closest('#demo') ? 1 : 0
     let cell = f.cell
-    let target = isWord ? cell : C - gap
+    let target = cell - f.gap
+    let half = f.size.w / 2
+    let a = turn(f, now, dt, half, cx, cy)
+    let cos = Math.cos(a)
+    let sin = Math.sin(a)
+    // perspective distance, in cells
+    let lens = f.size.w * 2.2
     let push = 6 * C
     // pixels behind the scene's text panel dim, so the text stays readable
     let panel = f.anchor.parentElement?.querySelector('.panel')?.getBoundingClientRect()
@@ -443,12 +575,24 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     particles.forEach((pt, i) => {
       let c = f.cells[i]
       let k = reduced ? 1 : easeOut(clamp01((now - morphAt - pt.delay) / MORPH_MS))
-      let tx = c ? o.x + c.x * cell : pt.sx
-      let ty = c ? o.y + (c.y + pressed * 0.5) * cell : pt.sy
+      let tx = pt.sx
+      let ty = pt.sy
+      let scale = 1
+      let depth = 0
+      if (c) {
+        // turn the cell around the shape's vertical axis, then project
+        let u = c.x - half
+        let z = -u * sin
+        scale = lens / (lens - z)
+        tx = cx + u * cos * scale * cell
+        ty = cy + (c.y - f.size.h / 2 + pressed * 0.5) * scale * cell
+        depth = z < -half * 0.45 ? 3 : z < -half * 0.25 ? 2 : z < -half * 0.08 ? 1 : 0
+      }
       let goal: RGB = palette.bg
+      let dim = false
       if (c) {
         goal = wb && c.letter !== undefined ? wb[c.letter][c.group] : palette[c.role]
-        if (highlight && c.group && f.anchor.closest('#how') && c.group !== highlight) goal = mix(goal, palette.bg, 0.6)
+        dim = Boolean(highlight && c.group && f.anchor.closest('#how') && c.group !== highlight)
         if (pressed) goal = mix(goal, palette.crest, 0.35)
         if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
       }
@@ -474,9 +618,16 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         pt.py += (ay - pt.py) * 0.2
         x += pt.px
         y += pt.py
+        // ride the wave field: slope moves the pixel, crests catch the light
+        let gi = Math.floor(y / C) * cols + Math.floor(x / C)
+        if (c && gi > cols && gi < wave.length - cols) {
+          x += clamp(wave[gi + 1] - wave[gi - 1], 1.5) * cell
+          y += clamp(wave[gi + cols] - wave[gi - cols], 1.5) * cell
+          if (wave[gi] > 0.6) color = palette.crest
+        }
       }
 
-      let size = Math.round(lerp(pt.fromSize, target, k))
+      let size = Math.max(1, Math.round(lerp(pt.fromSize, target * scale, k)))
       pt.x = x
       pt.y = y
       pt.color = color
@@ -492,9 +643,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
           color = mix(color, palette.crest, 0.4)
         }
       }
-      if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) color = mix(color, palette.bg, 0.6)
-      ctx.fillStyle = rgb(color)
-      ctx.fillRect(Math.round(x), Math.round(y), size, size)
+      if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) dim = true
+      paint(shade(color, depth, dim), Math.round(x), Math.round(y), size)
     })
   }
 
@@ -531,10 +681,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // one-pixel ring goes down first (issue #3), once the bird has streamed
     // in, so it never scatters away from it. Dark flavors don't need it.
     if (palette.light && intro >= 1.6) {
-      ctx.fillStyle = rgb(mix(palette.text, palette.bg, 0.1))
+      let ring = css(mix(palette.text, palette.bg, 0.1))
       for (let c of birdRing) {
         let at = place(c)
-        if (at) ctx.fillRect(at[0], at[1], s, s)
+        if (at) paint(ring, at[0], at[1], s)
       }
     }
     for (let c of bird.cells) {
@@ -542,8 +692,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       if (!at) continue
       let color = palette[c.role]
       if (!reduced && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) color = palette.crest
-      ctx.fillStyle = rgb(color)
-      ctx.fillRect(at[0], at[1], s - g, s - g)
+      paint(css(color), at[0], at[1], s - g)
     }
 
     if (recording && k < 0.2 && Math.random() < 0.45) {
@@ -558,7 +707,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   }
 
   function draw(now: number) {
+    let dt = lastFrame ? Math.min(now - lastFrame, 100) : 16
+    lastFrame = now
     ctx.clearRect(0, 0, W, H)
+    fx.clearRect(0, 0, W, H)
     let p = heroProgress()
     let key = wanted(p)
     if (key !== active) morphTo(key, now)
@@ -567,14 +719,38 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       startGlitch(now)
       nextAutoGlitch = now + 3500 + Math.random() * 4000
     }
+    if (!reduced) stepWave()
     drawBackground(now, p)
-    drawParticles(now)
+    drawParticles(now, dt)
     drawBird(now, p)
+    flush(fx)
+    if (glowOn) {
+      gx.clearRect(0, 0, glow.width, glow.height)
+      gx.drawImage(fg, 0, 0, glow.width, glow.height)
+      ctx.save()
+      ctx.globalCompositeOperation = palette.light ? 'multiply' : 'lighter'
+      ctx.globalAlpha = palette.light ? 0.45 : 0.9
+      ctx.drawImage(glow, 0, 0, W, H)
+      ctx.restore()
+    }
+    ctx.drawImage(fg, 0, 0, W, H)
   }
 
   function frame(now: number) {
     if (!running || signal.aborted) return
     level += (target - level) * (target > level ? 0.18 : 0.06)
+    // If frames run slow for ~1.5s, drop the glow; if still slow, use fewer pixels.
+    // clamped, so the gap after a hidden tab comes back is not a slow frame
+    if (lastFrame) frameMs = frameMs * 0.95 + Math.min(now - lastFrame, 50) * 0.05
+    slowFrames = frameMs > 22 ? slowFrames + 1 : 0
+    if (slowFrames > 90 && glowOn) {
+      glowOn = false
+      slowFrames = 0
+    } else if (slowFrames > 90 && density === 1) {
+      density = 0.6
+      slowFrames = 0
+      buildFormations()
+    }
     draw(now)
     requestAnimationFrame(frame)
   }
@@ -596,6 +772,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
 
   onTheme(() => {
     palette = readPalette()
+    strings.clear()
+    shades.clear()
     requestDraw()
   }, signal)
   onTalk((state) => {
