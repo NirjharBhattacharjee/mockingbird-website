@@ -764,7 +764,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let r0 = f.size.w * RING
         let zz = Math.sin(ra) * r0 * tc
         let k0 = lens / (lens - zz)
-        return { x: cx + Math.cos(ra) * r0 * k0 * cell, y: cy - Math.sin(ra) * r0 * ts * k0 * cell, r: f.size.w * 0.12 * cell }
+        // the hit circle grows with the stage; the one behind the bird has none
+        let r = Math.sin(ra) < -0.5 ? 0 : f.size.w * 0.12 * k0 * cell
+        return { x: cx + Math.cos(ra) * r0 * k0 * cell, y: cy - Math.sin(ra) * r0 * ts * k0 * cell, r }
       })
     }
     // pixels in front of the middle are drawn after those behind it, so a
