@@ -202,8 +202,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   // the wave field: two height buffers, stepped with a damped wave equation
   let wave = new Float32Array(0)
   let wavePrev = new Float32Array(0)
-  // the cells the road or heart covers: their waves bounce off its edge
+  // the cells the road or heart covers, each row filled from its leftmost
+  // to its rightmost pixel: their waves bounce off its edge
   let inside = new Uint8Array(0)
+  let spanL = new Int32Array(0)
+  let spanR = new Int32Array(0)
   let bounded = false
   let ripples: { x: number; y: number; at: number }[] = []
   let sparks: { x: number; y: number; vx: number; vy: number; life: number }[] = []
@@ -297,6 +300,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     wave = new Float32Array(cols * rows)
     wavePrev = new Float32Array(cols * rows)
     inside = new Uint8Array(cols * rows)
+    spanL = new Int32Array(rows)
+    spanR = new Int32Array(rows)
     buildFormations()
     requestDraw()
   }
@@ -776,7 +781,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let drive = reduced ? 0 : scrollY / 240 + now / 2500
     let beat = !reduced && active === 'involved' && now % 1000 < 140 ? 1 / half : 0
     bounded = active === 'next' || active === 'involved'
-    if (bounded) inside.fill(0)
+    spanL.fill(cols)
+    spanR.fill(-1)
     if (orbit) {
       stageAt = [0, 1, 2, 3].map((i) => {
         let ra = (i * Math.PI) / 2 + f.orbit
@@ -873,7 +879,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         // ride the wave field: slope moves the pixel, crests catch the light
         let gi = Math.floor(y / C) * cols + Math.floor(x / C)
         if (c && gi > cols && gi < wave.length - cols) {
-          inside[gi] = 1
+          let gy = Math.floor(gi / cols)
+          spanL[gy] = Math.min(spanL[gy], gi % cols)
+          spanR[gy] = Math.max(spanR[gy], gi % cols)
           x += clamp(wave[gi + 1] - wave[gi - 1], 1.5) * cell
           y += clamp(wave[gi + cols] - wave[gi - cols], 1.5) * cell
           if (wave[gi] > 0.6) color = palette.crest
@@ -926,6 +934,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
     flush(fx)
     for (let [color, nx, ny, size] of near) paint(color, nx, ny, size)
+    if (bounded) {
+      inside.fill(0)
+      for (let y = 0; y < rows; y++) if (spanR[y] >= spanL[y]) inside.fill(1, y * cols + spanL[y], y * cols + spanR[y] + 1)
+    }
   }
 
   // The bird sits above the wordmark in the hero. Scroll, and it lifts,
@@ -1079,10 +1091,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       startGlitch(now)
       nextAutoGlitch = now + 3500 + Math.random() * 4000
     }
-    if (!reduced) stepWave()
     drawWorld(now)
     drawBackground(now, p)
     drawParticles(now, dt)
+    // after the shapes, so a bounded shape's waves use this frame's outline
+    if (!reduced) stepWave()
     drawBird(now, p)
     flush(fx)
     if (glowOn) {
