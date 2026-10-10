@@ -10,6 +10,8 @@ export interface Cell {
   role: Role
   /** shapes with parts number them from 1 (the pipeline's four stages) */
   group: number
+  /** depth in cells, toward the viewer; flat shapes leave it out */
+  z?: number
 }
 
 export const FONT = '"JetBrains Mono Nerd", "JetBrains Mono Nerd Icons"'
@@ -17,6 +19,7 @@ export const FONT = '"JetBrains Mono Nerd", "JetBrains Mono Nerd Icons"'
 // Nerd Font (Font Awesome / Octicons) code points
 const ICON = {
   mic: '\uf130',
+  globe: '\uf0ac',
   words: '\uf075',
   magic: '\uf0d0',
   cursor: '\uf246',
@@ -121,13 +124,19 @@ export interface Motion {
   sway?: number
   spin?: number
   holdOnTouch?: boolean
+  /** a fixed lean toward you around the horizontal axis, radians */
+  tilt?: number
 }
 
 /** What a shape does unless MOTION says otherwise: sway, and face you when touched. */
 export const SWAY: Motion = { sway: 0.22, holdOnTouch: true }
 
 /** Each shape's own motion, set as the sections get their redesigns. */
-export const MOTION: Record<string, Motion> = {}
+export const MOTION: Record<string, Motion> = {
+  // the Fn key turns on its own, leans so you see its top, and holds still
+  // facing you while you touch it
+  fn: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
+}
 
 /**
  * Each section's world, by its shape: how its ambient pixels move.
@@ -145,6 +154,12 @@ export const AMBIENT: Record<string, Ambient> = {
   lock: 'motes',
   road: 'rush',
   heart: 'rise',
+}
+
+/** The cells on a shape's own border: the ones with an empty neighbor. */
+function edge(cells: Cell[]): Cell[] {
+  let filled = new Set(cells.map((c) => `${c.x},${c.y}`))
+  return cells.filter((c) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !filled.has(`${c.x + dx},${c.y + dy}`)))
 }
 
 /** The one-cell ring around a shape: every empty cell touching it, diagonals included. */
@@ -173,19 +188,31 @@ export function buildShape(name: string, size: number, logo: HTMLImageElement | 
       let oy = Math.round((size - s.h) / 2)
       return s.cells.map((c) => ({ ...c, x: c.x + ox, y: c.y + oy }))
     }
-    case 'fn':
-      return rasterize(size, [
+    case 'fn': {
+      // A keycap like the Mac's: "fn" top right, a globe bottom left, on a
+      // rounded cap with real thickness (its rim extruded back into walls).
+      let cap = (ctx: CanvasRenderingContext2D, s: number) => {
+        ctx.beginPath()
+        ctx.roundRect(s * 0.12, s * 0.12, s * 0.76, s * 0.76, s * 0.12)
+      }
+      let face = rasterize(size, [
         {
           role: 'lavender',
           draw: (ctx, s) => {
-            ctx.lineWidth = Math.max(2, Math.round(s * 0.07))
-            ctx.beginPath()
-            ctx.roundRect(s * 0.1, s * 0.16, s * 0.8, s * 0.68, s * 0.1)
+            ctx.lineWidth = Math.max(2, Math.round(s * 0.05))
+            cap(ctx, s)
             ctx.stroke()
           },
         },
-        { role: 'sky', draw: (ctx, s) => glyph(ctx, 'fn', s / 2, s * 0.48, s * 0.42, 800) },
+        { role: 'sky', draw: (ctx, s) => glyph(ctx, 'fn', s * 0.6, s * 0.34, s * 0.28, 800) },
+        { role: 'sky', draw: (ctx, s) => glyph(ctx, ICON.globe, s * 0.33, s * 0.66, s * 0.22) },
       ])
+      let walls = edge(rasterize(size, [{ role: 'blue', draw: (ctx, s) => (cap(ctx, s), ctx.fill()) }]))
+      let depth = Math.max(4, Math.round(size * 0.1))
+      let cells: Cell[] = face.map((c) => ({ ...c, z: depth / 2 }))
+      for (let z = -depth / 2; z < depth / 2; z += 2) for (let c of walls) cells.push({ ...c, z })
+      return cells
+    }
     case 'pipeline': {
       // listen → hear → tidy → type, around a square
       let q = (code: string, role: Role, group: number, col: number, row: number): Layer => ({
