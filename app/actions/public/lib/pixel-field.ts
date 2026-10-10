@@ -446,26 +446,26 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         splash(x, y, 3)
         let b = birdBox
         if (b && e.clientX >= b.x && e.clientX < b.x + b.w && e.clientY >= b.y && e.clientY < b.y + b.h) flutter(now)
-        // touching a pipeline stage picks its tab
-        if (active === 'how') {
-          let hit = stageAt.findIndex((st) => Math.hypot(e.clientX - st.x, e.clientY - st.y) < st.r)
-          if (hit >= 0) document.querySelectorAll<HTMLInputElement>('#how input[name="how"]')[hit]?.click()
-        }
         if (overWord(e.clientX, e.clientY)) startGlitch(now, true)
       },
       { signal },
     )
   }
 
-  // Pressing the Fn key is holding F: the scripted demo, no microphone. It's
-  // an interaction, not an animation, so it works with reduced motion too.
-  // Only the pointer that pressed it lets go, and a touch press holds the
-  // key still the way hovering does.
+  // Touching a pipeline stage picks its tab, and pressing the Fn key is
+  // holding F: the scripted demo, no microphone. These are interactions, not
+  // animations, so they work with reduced motion too. Only the pointer that
+  // pressed the key lets go, and a touch press holds the key still the way
+  // hovering does.
   let keyPointer: number | null = null
   window.addEventListener(
     'pointerdown',
     (e) => {
       if (e.target instanceof Element && e.target.closest('a, button, input, label, .panel')) return
+      if (active === 'how') {
+        let hit = stageAt.findIndex((st) => Math.hypot(e.clientX - st.x, e.clientY - st.y) < st.r)
+        if (hit >= 0) document.querySelectorAll<HTMLInputElement>('#how input[name="how"]')[hit]?.click()
+      }
       let key = formations.get('demo')
       if (active !== 'demo' || !key || keyPointer !== null) return
       let r = key.anchor.getBoundingClientRect()
@@ -722,10 +722,13 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // perspective distance, in cells
     let lens = f.size.w * 2.2
     // the ring: orbits on its own; a picked tab swings its stage to the
-    // front (angle π/2, nearest you) the short way round and holds it 4s
+    // front (angle π/2, nearest you) the short way round and holds it 4s.
+    // With reduced motion the picked stage just sits in front.
     let orbit = f.motion?.orbit
-    if (orbit && !reduced) {
-      if (now - pickedAt < 4000) f.orbit += wrap(Math.PI / 2 - ((highlight - 1) * Math.PI) / 2 - f.orbit) * 0.08
+    let front = Math.PI / 2 - ((highlight - 1) * Math.PI) / 2
+    if (orbit && reduced) f.orbit = front
+    else if (orbit) {
+      if (now - pickedAt < 4000) f.orbit += wrap(front - f.orbit) * 0.08
       else f.orbit += orbit * (dt / 1000)
     }
     let pulse = (now / 1000) * 1.2
