@@ -23,7 +23,7 @@ import { currentSceneIndex, onTalk, onTheme, prefersReducedMotion, scenes } from
 import { type Palette, type RGB, type Role, bands, hex, mix, readPalette, rgb } from './palette.ts'
 import { FLAP, LIFT, type BirdCell, divePose, flapFrame, turnBird } from './bird.ts'
 import { FONT_ROWS, layout, measure } from './pixel-font.ts'
-import { AMBIENT, type Ambient, type Cell, MOTION, type Motion, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
+import { AMBIENT, type Ambient, type Cell, MOTION, type Motion, RING, SWAY, buildShape, loadShapeFonts, outline, sampleLogo } from './shapes.ts'
 
 const WORD = 'mockingbird'
 const WORD_COLS = measure(WORD)
@@ -51,6 +51,8 @@ interface Formation {
   motion?: Motion
   /** current turn around the vertical axis, radians */
   angle: number
+  /** current turn of the ring cells around the middle, radians */
+  orbit: number
   /** the section's world: its hue and how its ambient pixels move */
   hue?: RGB
   ambient?: Ambient
@@ -108,6 +110,8 @@ const easeOut = (t: number) => 1 - (1 - t) ** 3
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 const clamp = (t: number, max: number) => Math.min(max, Math.max(-max, t))
+/** an angle folded into -π..π, for turning the short way round */
+const wrap = (a: number) => ((((a + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
 /** Grid cell size in px, chosen so the wordmark fits the viewport. */
@@ -177,6 +181,9 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
   let motes: Mote[] = Array.from({ length: 240 }, () => ({ x: 0, y: 0, vx: 0, vy: 0 }))
   let diveFrames = new Map<string, BirdCell<Role>[]>()
   let lastP = 0
+  // when a "how it works" tab was picked, and where each stage is on screen
+  let pickedAt = -1e9
+  let stageAt: { x: number; y: number; r: number }[] = []
 
   let formations = new Map<string, Formation>()
   let particles: Particle[] = []
@@ -214,7 +221,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     formations.clear()
     if (wordSlot) {
       let cells = layout(WORD).map((c) => ({ x: c.x, y: c.y, letter: c.letter, group: c.band, role: 'sky' as const }))
-      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, cell: WC, gap: 0, anchor: wordSlot, angle: 0 })
+      formations.set('top', { cells, size: { w: WORD_COLS, h: FONT_ROWS }, cell: WC, gap: 0, anchor: wordSlot, angle: 0, orbit: 0 })
     }
     for (let scene of sceneList) {
       let stage = scene.querySelector<HTMLElement>('[data-stage]')
@@ -237,6 +244,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         anchor: stage,
         motion: MOTION[shape] ?? SWAY,
         angle: 0,
+        orbit: 0,
         hue: hue.startsWith('#') ? hex(hue) : undefined,
         ambient: AMBIENT[shape],
       })
@@ -444,15 +452,20 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     )
   }
 
-  // Pressing the Fn key is holding F: the scripted demo, no microphone. It's
-  // an interaction, not an animation, so it works with reduced motion too.
-  // Only the pointer that pressed it lets go, and a touch press holds the
-  // key still the way hovering does.
+  // Touching a pipeline stage picks its tab, and pressing the Fn key is
+  // holding F: the scripted demo, no microphone. These are interactions, not
+  // animations, so they work with reduced motion too. Only the pointer that
+  // pressed the key lets go, and a touch press holds the key still the way
+  // hovering does.
   let keyPointer: number | null = null
   window.addEventListener(
     'pointerdown',
     (e) => {
       if (e.target instanceof Element && e.target.closest('a, button, input, label, .panel')) return
+      if (active === 'how') {
+        let hit = stageAt.findIndex((st) => Math.hypot(e.clientX - st.x, e.clientY - st.y) < st.r)
+        if (hit >= 0) document.querySelectorAll<HTMLInputElement>('#how input[name="how"]')[hit]?.click()
+      }
       let key = formations.get('demo')
       if (active !== 'demo' || !key || keyPointer !== null) return
       let r = key.anchor.getBoundingClientRect()
@@ -480,6 +493,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       let input = e.target as HTMLInputElement
       if (input.name !== 'how') return
       highlight = Number(input.value) + 1
+      pickedAt = performance.now()
       requestDraw()
     },
     { signal },
@@ -705,11 +719,33 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     let tilt = f.motion?.tilt ?? 0
     let tc = Math.cos(tilt)
     let ts = Math.sin(tilt)
+    // perspective distance, in cells
+    let lens = f.size.w * 2.2
+    // the ring: orbits on its own; a picked tab swings its stage to the
+    // front (angle π/2, nearest you) the short way round and holds it 4s.
+    // With reduced motion the picked stage just sits in front.
+    let orbit = f.motion?.orbit
+    let front = Math.PI / 2 - ((highlight - 1) * Math.PI) / 2
+    if (orbit && reduced) f.orbit = front
+    else if (orbit) {
+      if (now - pickedAt < 4000) f.orbit += wrap(front - f.orbit) * 0.08
+      else f.orbit += orbit * (dt / 1000)
+    }
+    let pulse = (now / 1000) * 1.2
+    if (orbit) {
+      stageAt = [0, 1, 2, 3].map((i) => {
+        let ra = (i * Math.PI) / 2 + f.orbit
+        let r0 = f.size.w * RING
+        let zz = Math.sin(ra) * r0 * tc
+        let k0 = lens / (lens - zz)
+        // the hit circle grows with the stage; the one behind the bird has none
+        let r = Math.sin(ra) < -0.5 ? 0 : f.size.w * 0.12 * k0 * cell
+        return { x: cx + Math.cos(ra) * r0 * k0 * cell, y: cy - Math.sin(ra) * r0 * ts * k0 * cell, r }
+      })
+    }
     // pixels in front of the middle are drawn after those behind it, so a
     // shape with depth never shows through itself
     let near: [string, number, number, number][] = []
-    // perspective distance, in cells
-    let lens = f.size.w * 2.2
     let push = 6 * C
     // pixels behind the scene's text panel dim, so the text stays readable
     let panel = f.anchor.parentElement?.querySelector('.panel')?.getBoundingClientRect()
@@ -730,6 +766,12 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         let z0 = c.z ?? 0
         let x1 = u * cos + z0 * sin
         let z1 = -u * sin + z0 * cos
+        if (c.ring) {
+          // orbiting cells sit on the ring and always face you
+          let ra = c.ring.angle + f.orbit
+          x1 = c.ring.radius * Math.cos(ra) + u
+          z1 = c.ring.radius * Math.sin(ra)
+        }
         let y2 = v * tc - z1 * ts
         z = v * ts + z1 * tc
         scale = lens / (lens - z)
@@ -746,6 +788,13 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         // rim glows brighter with the voice level, like a backlit key
         if (pressed) goal = mix(goal, palette.crest, c.role === 'lavender' ? 0.35 + 0.5 * level : 0.35)
         if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
+        // a pulse runs round the orbit, listen → hear → tidy → type, and each
+        // stage flares as it passes
+        if (c.ring && !reduced) {
+          let d = Math.abs(wrap(c.ring.angle - pulse))
+          if (!c.group && d < 0.18) goal = palette.crest
+          else if (c.group && d < 0.3) goal = mix(goal, palette.crest, 0.35)
+        }
       }
       let color = k === 1 ? goal : mix(pt.from, goal, k)
       // the flight between sections: each pixel sweeps out past the edges
