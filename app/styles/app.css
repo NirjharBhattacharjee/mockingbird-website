@@ -364,7 +364,7 @@
 /* scene panels fade up as they scroll in (no JS) */
 @supports (animation-timeline: view()) {
   @keyframes reveal {
-    from { opacity: 0; transform: translateY(24px); }
+    from { opacity: 0; transform: translateY(24px) scale(0.96); }
     to { opacity: 1; transform: none; }
   }
   .reveal {

@@ -15,7 +15,7 @@ export interface Palette extends Record<Role, RGB> {
   crest: RGB
 }
 
-function hex(value: string): RGB {
+export function hex(value: string): RGB {
   let h = value.replace('#', '').trim()
   return [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16)) as RGB
 }
