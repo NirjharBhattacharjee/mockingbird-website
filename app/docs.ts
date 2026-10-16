@@ -12,12 +12,14 @@ export interface DocMeta {
 
 export const DOCS: DocMeta[] = [
   { slug: '', file: 'README.md', title: 'User guide', blurb: 'Install, every command, permissions, troubleshooting' },
+  { slug: 'agent-install', file: 'AGENT_INSTALL.md', title: 'Set up with an agent', blurb: 'Let a coding agent install it for you' },
   { slug: 'philosophy', file: 'PHILOSOPHY.md', title: 'Philosophy', blurb: 'Why it exists, and what it must never become' },
   { slug: 'architecture', file: 'ARCHITECTURE.md', title: 'Architecture', blurb: 'The stack, the pipeline, and who owns what' },
   { slug: 'models', file: 'MODELS.md', title: 'Models', blurb: 'Every model it runs, and why' },
   { slug: 'privacy', file: 'SECURITY_PRIVACY.md', title: 'Security & privacy', blurb: 'What it touches, and what it never does' },
   { slug: 'database', file: 'DATABASE.md', title: 'Database', blurb: 'The SQLite schema, in full' },
   { slug: 'tui', file: 'TUI.md', title: 'Terminal UI', blurb: 'The Catppuccin TUI and its screens' },
+  { slug: 'mcp', file: 'MCP.md', title: 'AI clients (MCP)', blurb: 'Transcription and the dictionary as tools for AI clients' },
 ]
 
 export interface Doc extends DocMeta {

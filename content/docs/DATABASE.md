@@ -204,10 +204,12 @@ CREATE VIRTUAL TABLE utterance_fts USING fts5(
 ```sql
 CREATE TABLE dictionary (
   term        TEXT PRIMARY KEY COLLATE NOCASE,   -- "Nirjhar" and "nirjhar" are the same row
+  heard       TEXT,                              -- what Whisper writes instead, replaced after cleanup
   hint        TEXT,                              -- pronunciation/usage note fed into the LLM prompt
   uses        INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  learned     INTEGER NOT NULL DEFAULT 0          -- 1: added from the user's corrections (§7), not by hand
 );
 ```
 
@@ -216,10 +218,20 @@ CREATE TABLE dictionary (
   [ARCHITECTURE.md §7](./ARCHITECTURE.md#7-where-sqlite-fits). `COLLATE
   NOCASE` prevents silently accumulating case-variant duplicates of the same
   word.
-- `uses` increments each time the LLM Gate includes this term in a prompt
-  and the resulting transcript actually contains it — this is what lets the
-  dictionary editor in the TUI sort by "most relevant," not just
-  alphabetically.
+- `heard` is the `cat puck => Catppuccin` form: a plain replacement applied
+  to the finished text ([MODELS.md §4a](./MODELS.md#4a-the-user-dictionary)).
+- `uses` goes up by one each time a typed transcript contains the term as a
+  whole word. The dictionary is read most used first, so when it's longer
+  than the cleanup prompt's cap, the terms this transcript seems to say go
+  in first and the most used fill the rest. The TUI editor can sort by it
+  too.
+- Implemented in `packages/store`. Schema changes are appended to its
+  `MIGRATIONS` list, and `PRAGMA user_version` records how many have run.
+  The daemon writes; `mockingbird dictionary add/remove` asks it to over
+  the IPC socket, and `list` reads `data.db` read-only.
+- `learned` marks a word added from the user's corrections, so
+  `mockingbird dictionary forget` can delete those and nothing the user
+  added. Adding a learned word by hand clears the flag.
 
 ## 6. `app_profile`
 
@@ -259,6 +271,13 @@ CREATE TABLE correction (
 );
 ```
 
+- Implemented (#62). The daemon records a pair when the user fixes a
+  misheard word in a dictation: `from_text` lowercased, `to_text` as the
+  user wrote it. The word is added to `dictionary` (with `learned = 1`) at
+  `count` 2, or at 1 if the user capitalised it. Removing a dictionary word
+  deletes the pairs that led to it, so it isn't learned straight back. The
+  rules on what is read to find a correction are in
+  [SECURITY_PRIVACY.md §5](./SECURITY_PRIVACY.md#learning-from-your-corrections).
 - This is aggregate, learned data — a `(from, to)` pair's `count`
   increments each time the same correction pattern is observed again; it
   does **not** store a row per correction event, and it does **not** link
@@ -278,6 +297,10 @@ CREATE TABLE settings (
   value   TEXT NOT NULL   -- JSON-encoded when the value isn't a plain string
 );
 ```
+
+Built in migration 3. The one key so far is `llm_model`, the cleanup model
+`mockingbird models use` picked; it's absent for the default. The daemon
+writes it when the command asks over the socket, and reads it at start.
 
 - Deliberately untyped/schemaless — hotkey binding, active ASR/LLM model
   name, lock-mode silence threshold, and whatever else

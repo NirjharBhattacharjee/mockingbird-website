@@ -9,19 +9,22 @@ option, permissions, troubleshooting, and privacy. After it, the
 ## Quick start
 
 You need a Mac with Apple Silicon, [Homebrew](https://brew.sh), and about 6 GB of
-free space.
+free space. Without Homebrew, the installer offers to install it, which needs
+an administrator account.
 
 **1. Install everything**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/NirjharBhattacharjee/mockingbird/main/scripts/install.sh | bash
+curl -fsSL https://github.com/NirjharBhattacharjee/mockingbird/releases/latest/download/install.sh | bash
 ```
 
 This installs Bun, whisper-cpp, Ollama and ffmpeg with Homebrew, clones
 mockingbird into `~/mockingbird` at the latest release, and runs
 `mockingbird models pull` for the models (checking each against its sha256)
 and the cleanup model.
-It skips anything you already have, so it's safe to run again.
+It skips anything you already have, so it's safe to run again. A first
+install then opens `mockingbird setup`, which starts mockingbird and walks you
+through the permissions, the Fn key and a test dictation.
 [Read the script](../scripts/install.sh) first if you like.
 
 Or install it with Homebrew instead:
@@ -38,6 +41,88 @@ doesn't make. To update, run the install command again. It moves
 `~/mockingbird` to the latest release, refuses if you've edited files there,
 and restarts mockingbird if it's running. With Homebrew, `brew upgrade
 mockingbird`, then `mockingbird restart`.
+
+To test what's coming before it's released, install the beta, the newest
+prerelease if there is one:
+
+```sh
+curl -fsSL https://github.com/NirjharBhattacharjee/mockingbird/releases/latest/download/install.sh | MOCKINGBIRD_CHANNEL=beta bash
+```
+
+Running the plain install command again later takes you back to the latest
+release.
+
+### Uninstalling
+
+```sh
+mockingbird uninstall
+```
+
+It lists what it will remove, with sizes, and asks once. Then it stops the
+agent, gives Fn back if you ran `mockingbird fn`, and offers to keep your
+dictionary words in `~/mockingbird-dictionary.txt` before deleting
+`~/.mockingbird`. It removes the command and the PATH line the installer
+added. It deletes `~/mockingbird` only if that's the installer's clone with
+no changes of yours; a Homebrew install says to run `brew uninstall
+mockingbird` instead. It asks separately before removing the cleanup model,
+since Ollama may serve other programs, and never removes the Homebrew tools.
+At the end it lists what's left, including the three Privacy & Security lists
+to clean by hand. `--yes` answers for you: remove everything, keep a copy of
+the words, keep the cleanup model.
+
+#### By hand
+
+If the command is broken, or you'd rather do it yourself, run the first two
+while the `mockingbird` command still exists:
+
+```sh
+mockingbird stop
+mockingbird fn --undo  # only if you ran `mockingbird fn`
+```
+
+Fn goes back to what it did before once you log out of your Mac and back in.
+
+If `mockingbird` no longer runs, stop the agent with
+`launchctl bootout gui/$(id -u)/com.mockingbird.agent` instead, and set
+**System Settings → Keyboard → "Press 🌐 key to"** back to what you want Fn to
+do.
+
+Next, delete the agent and `~/.mockingbird`, or your `MOCKINGBIRD_HOME` if you
+set one. That folder holds the models, about 1.1 GB, plus the agent's runner,
+the logs and your dictionary. The `cp` line keeps a copy of your words; leave
+it out if you don't want them:
+
+```sh
+home="${MOCKINGBIRD_HOME:-$HOME/.mockingbird}"
+cp "$home/dictionary.txt" ~/mockingbird-dictionary.txt
+rm ~/Library/LaunchAgents/com.mockingbird.agent.plist
+rm -rf "$home"
+```
+
+Then remove the code and the command. After the curl install, that's
+`rm -rf ~/mockingbird ~/.local/bin/mockingbird`, with your `MOCKINGBIRD_DIR`
+in place of `~/mockingbird` if you set one. The installer may also have added
+`~/.local/bin` to your PATH. This prints the file it changed, if any:
+
+```sh
+grep -l 'Added by the mockingbird installer' "${ZDOTDIR:-$HOME}/.zshrc" \
+  ~/.bash_profile ~/.bash_login ~/.profile 2>/dev/null
+```
+
+Delete that line and the `PATH` line under it.
+
+After a Homebrew install, run `brew uninstall mockingbird`, then
+`brew untap nirjharbhattacharjee/mockingbird`.
+
+The rest is shared with other programs, so remove it only if nothing else
+uses it:
+
+- `ollama rm qwen3:4b-instruct-2507-q4_K_M` deletes the cleanup model, about
+  2.5 GB.
+- `brew uninstall bun whisper-cpp ollama ffmpeg` removes the tools.
+- In **System Settings → Privacy & Security**, the **Microphone**,
+  **Accessibility** and **Input Monitoring** lists each still show
+  mockingbird, or bun on some installs. Select it and click **−**.
 
 ### Manual install
 
@@ -86,6 +171,8 @@ Click into any app (Slack, Notes, a browser), then hold **Fn**, speak, and let
 go: your words are typed where your cursor is. The first time, macOS will ask
 for permission — run `mockingbird status` to see what's still missing, and read
 [Permissions](#permissions) for the one surprise in how macOS grants them.
+Or run `mockingbird setup`, which goes through each permission, the Fn key and
+a test dictation with you, one step at a time, and checks each one worked.
 
 To turn it off again:
 
@@ -104,9 +191,13 @@ It stays off, including after a reboot, until the next `mockingbird start`.
 | `mockingbird start` | Run in the background, now and at every login |
 | `mockingbird stop` | Stop, and stay stopped across reboots |
 | `mockingbird restart` | Restart it (do this after granting a permission) |
-| `mockingbird status` | Whether it's running, and what it can see |
+| `mockingbird setup` | Walk through the permissions, Fn and a test dictation, checking each step |
+| `mockingbird status` | Whether it's running, and what it can see (`--json` for scripts) |
 | `mockingbird fn` | Bind Fn to dictation only, so tapping it stops opening the emoji picker. Changes a system-wide setting, so it's never done for you |
 | `mockingbird fn --undo` | Put back the Fn setting `mockingbird fn` replaced |
+| `mockingbird uninstall` | Remove mockingbird and what it installed, after asking |
+| `mockingbird models` | The cleanup models Ollama has, with their eval scores and which is in use |
+| `mockingbird models use <name>` | Switch to another cleanup model and restart (`--default` goes back) |
 
 Dictate a list — "I'm going for groceries, I'll get onions, toilet paper and
 rice" — and it's typed as a list, one item per line. The line breaks are sent
@@ -134,6 +225,21 @@ records what happened but never what you said.
 Set `MOCKINGBIRD_CUES=0` to silence them. `mockingbird listen` is quiet by
 default instead, since it draws a live level meter; `--cues` turns them on
 there too.
+
+**You can change how it cleans up.** The cleanup model's instructions are in
+[`packages/llm/prompts/cleanup.md`](../packages/llm/prompts/cleanup.md), in
+sections: `## Rules`, `## Lists`, `## Terminal`, `## Dictionary`. To change
+one, put a section with the same heading in `~/.mockingbird/cleanup.md` and
+run `mockingbird restart`. For example, British spelling:
+
+```markdown
+## Rules
+Rewrite the transcript inside <transcript> in British spelling (colour,
+organise). Remove filler words. Return only the text.
+```
+
+Sections you leave out stay as shipped. Your file replaces a whole section,
+so copy the shipped one and edit it rather than starting from nothing.
 
 ### `mockingbird listen`: talk live in a terminal
 
@@ -259,10 +365,15 @@ Environment variables:
 |---|---|
 | `MOCKINGBIRD_HOME` (where `models/` is) | `~/.mockingbird` |
 | `MOCKINGBIRD_ASR_MODEL` (a file in `models/`, or a path) | `ggml-large-v3-q5_0.bin` |
-| `MOCKINGBIRD_ASR_VOCABULARY` (read `dictionary.txt` to Whisper; can distort other names) | off |
-| `MOCKINGBIRD_ASR_PORT` | `8771` |
+| `MOCKINGBIRD_ASR_VOCABULARY` (read the dictionary to Whisper; can distort other names) | off |
+| `MOCKINGBIRD_ASR_PORT` | `8771` for the agent; `transcribe` and `mcp` pick a free port, so a long file never holds up dictation |
+| `MOCKINGBIRD_LEARN` (`0`: don't learn dictionary words from your corrections) | on |
+| `MOCKINGBIRD_LEARN_EXCLUDE` (bundle ids, comma separated, never read to learn from) | none |
 | `MOCKINGBIRD_LLM_URL` | `http://127.0.0.1:11434` |
 | `MOCKINGBIRD_LLM_MODEL` | `qwen3:4b-instruct-2507-q4_K_M` |
+
+The background agent reads them from the shell that last ran `mockingbird start`
+or `restart`, so run `mockingbird restart` after changing one.
 
 </details>
 
@@ -346,6 +457,9 @@ see [AGENTS.md](../AGENTS.md).
   privacy-first by belief, not just by design. Read this before proposing
   anything that touches monetization, access, or inclusion — for humans and
   AI agents alike.
+- **[MCP.md](./MCP.md)** — give an AI client (Claude Code, Claude Desktop,
+  Cursor) mockingbird's transcription and dictionary as tools, and where the
+  text goes when you do.
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** — the bible. Stack, architecture, state
   ownership, packaging, deployment, CI/CD, and open scope. Every architectural
   decision should end up reflected here before or shortly after it lands in code.

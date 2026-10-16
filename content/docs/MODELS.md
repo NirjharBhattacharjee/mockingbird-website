@@ -162,17 +162,27 @@ every captured segment goes through both.
 - The integration tests still use `base.en` (~148 MB), which keeps them
   quick; it is not what ships.
 
-### 4a. The user dictionary — `~/.mockingbird/dictionary.txt`
+### 4a. The user dictionary
 
 No model spells a name it has never seen; every dictation app relies on being
-told. The file lists the words that matter to this person, one per line, and
-feeds three places (`packages/llm/src/dictionary.ts`):
+told. `mockingbird dictionary add` takes the words that matter to this
+person, which live in the `dictionary` table of `data.db`
+([DATABASE.md §5](./DATABASE.md#5-dictionary)), and they feed three places
+(`packages/llm/src/dictionary.ts`):
 
-| Line | What it does |
+| Entry | What it does |
 |---|---|
 | `Nirjhar Bhattacharjee` | Given to Whisper before it listens (`prompt`), and to the cleanup model as a spelling to keep |
 | `Catppuccin (a colour theme)` | Same, with a note for the cleanup model |
 | `cat puck => Catppuccin` | A plain replacement afterwards, for a word Whisper gets wrong the same way every time |
+
+**It also learns from the user's fixes.** When someone corrects a misheard
+name in a dictation ("near jar" → "Nirjhar"), the daemon reads the fix back
+and adds the name once it has seen the same fix twice, or once if the user
+capitalised it. A replacement only counts if it's one to three words that
+`soundsLike` the typed ones (0.7, `correctNames`' threshold), so "Tuesday" →
+"Wednesday" is a change of mind, not a mishearing. Ordinary words in
+`/usr/share/dict/words` never go in. What it reads and keeps is in [SECURITY_PRIVACY.md §5](./SECURITY_PRIVACY.md#learning-from-your-corrections).
 
 **A term is matched by sound, not spelling** (`correctNames`, `soundOf`).
 Whisper writes an unfamiliar name as it hears it, and never the same way
@@ -195,11 +205,16 @@ right, "Bhattacharjee" → "Bhattacharje" and "Aishwarya" → "Aiishwarya". The
 prompt biases the whole decode, not just the word it was given. The
 replacement lines carry no such risk, so they are the default advice. Whisper
 takes at most 224 tokens of prompt, so `buildVocabularyPrompt` stops at 600
-characters. The file
-is created with instructions in it on first run, and read at startup — it
-takes effect on `mockingbird restart`. `docs/DATABASE.md` has a `dictionary`
-table planned; the file is what exists today, and the TUI editor will write
-the same words.
+characters.
+
+**A long dictionary doesn't all go into the cleanup prompt.** Up to 50 terms
+go in whole. Past that, `promptTerms` sends the terms the transcript seems to
+say (by spelling, or by sound after `correctNames`), then the most used, up
+to 50. Replacements and `correctNames` still use every term, since they cost
+nothing. 50 is a first guess, not measured against cleanup time per
+dictionary size. Edits take effect on the next dictation. The old
+`~/.mockingbird/dictionary.txt` is imported once on start and renamed to
+`dictionary.txt.imported`.
 
 ## 5. Cleanup / formatting LLM — Qwen3-4B-Instruct
 
@@ -236,13 +251,35 @@ the same words.
   rules in every prompt qwen3 turned plain sentences into lists ("Meeting:\n-
   Thursday", which `acceptCleanup` then rejected, leaving the fillers in).
   `## Terminal` and `## Dictionary` are added when they apply. Change it
-  against `bun run eval:cleanup` and the held-out set. One cost to know. Ollama
+  against `bun run eval:cleanup` and the held-out set. A user can override
+  any section without editing the code: `~/.mockingbird/cleanup.md`, in the
+  same format, read when the agent starts. Each `## ` section in it replaces
+  the shipped one with that heading, and the rest stay as shipped. A heading
+  that matches none is logged as a warning. The evals and benches only ever
+  use the shipped file. One cost to know. Ollama
   reuses the processed start of a prompt between calls, so a list dictation
-  that follows a non-list one processes the list section afresh, about
-  0.5s more than a list after a list.
+  that follows a non-list one processes the list section afresh: 650-850ms
+  more than a list after a list on an M3, where a cached prompt costs ~30ms
+  and writing the answer ~30ms a token. Three ways around it each lost eval
+  cases, so none shipped (2026-10-04): the list section in every prompt
+  (dev 35/37), the varying sections moved into the user message so the
+  system prompt never changes (35/37, and stories became lists), and a
+  shorter list section (36/37, held-out 15/16, for only 59 fewer tokens).
+- **Self-corrections:** "send it on Tuesday, no wait, on Wednesday" is typed
+  as "send it on Wednesday". The rules name the cues ("no wait", "sorry",
+  "make that", "I meant") with two worked examples; without them qwen3 left
+  the sentence as said. "actually" isn't on the list. When it was, the model
+  also deleted it from "it actually works now". `acceptCleanup` holds a
+  correction to the usual floor of half the transcript, so a very short one
+  ("a table for four, actually make that six" → "a table for six") falls back
+  to the transcript. A lower floor for corrections was tried and dropped: four
+  versions of it each let some wrong cleanup through (a dropped ending, a
+  reversed meaning) or rejected a right one.
 - **When it runs:** only when the transcript needs it. `shouldSkipLlm`
   (`packages/llm/src/cleanup.ts`) skips cleanup for very short utterances, and
-  for confident transcripts that carry no filler word and no stutter —
+  for confident transcripts that carry no filler word and no stutter, unless
+  the speaker corrected themselves after a comma (", no wait", ", sorry",
+  ", actually") or spoke a symbol ("dash a", "slash") —
   `formatText` supplies the capital and the end punctuation without a model.
   Cleanup costs 400-1500ms, which is most of the wait after speaking.
 - **Job:** take the raw ASR transcript plus context (user dictionary,
@@ -294,10 +331,19 @@ everything else in this file). Tracked as undecided, not silently assumed.
   `onnxruntime-node` is treated as a fixed part of the pipeline, not a
   configurable choice, since its cost/accuracy profile isn't a tradeoff most
   users need to tune.
-- Model choice (which Whisper size, which LLM) is expected to live in the
-  `settings` table (see [state ownership map](./ARCHITECTURE.md#8-state-ownership-map))
-  and be editable via the TUI or a future `mockingbird config` CLI — exact
-  surface undecided, see [ARCHITECTURE.md §16](./ARCHITECTURE.md#16-known-gaps--scope-not-yet-decided).
+- **The cleanup model is picked with `mockingbird models`.** On its own it
+  lists the models Ollama has that can write text (embedding models are left
+  out), with the eval's pass counts from §7a for the ones measured, and marks
+  the one in use. `mockingbird models use <name>` saves the choice as
+  `llm_model` in the `settings` table, through the daemon (the only writer to
+  `data.db`), and restarts the agent; `--default` deletes it.
+  `MOCKINGBIRD_LLM_MODEL`, when set, still wins, and `models use` says so.
+  `mockingbird models pull` pulls whichever model is in use. A model nobody
+  has evaluated works the same way: it shows as "not measured", and running
+  `bun run eval:cleanup` with it set gives its numbers.
+- The Whisper model has no command yet: it's `MOCKINGBIRD_ASR_MODEL`. A
+  `models use speech <model>` is planned once there's more than one speech
+  backend ([#51](https://github.com/NirjharBhattacharjee/mockingbird/issues/51), #56).
 
 ### 7a. Which models, measured (2026-10-03)
 
@@ -345,12 +391,58 @@ quantisation of it does better: the full-precision `large-v3` is three times
 the size for the same accuracy. `qwen3:4b-instruct-2507-q4_K_M` passes every
 eval case, and every smaller model fails two to four held-out cases. If a
 lighter setup is ever offered for small Macs, this is the cost.
+
+**Retuning the prompt for a small model doesn't close the gap** (#58,
+2026-10-12). The eval has grown to 37 dev and 16 held-out cases since the
+table above. Three prompt variants were tried against `qwen2.5:1.5b`: a
+heading line made compulsory, an example of a story staying a sentence, and
+the "one paragraph" rule relaxed for lists. The best lifted it from 28 to 30
+on dev. Every one of them cost qwen3 cases instead, turning "I opened the
+laptop, then I checked my email..." into a list. None was kept.
+
+| Cleanup model | Memory | dev | held-out |
+|---|---|---|---|
+| qwen3:4b-instruct-2507-q4_K_M | 3.2 GB | 35/37 | 16/16 |
+| llama3.2:3b | 2.5 GB | 30/37 | 13/16 |
+| qwen2.5:1.5b | 1.2 GB | 28/37 | 12/16 |
+
+The small models fail the same cases whatever the prompt says. They leave
+options and steps as a sentence, or list them with no heading, and they
+don't apply a spoken correction ("a table for four, actually make that
+six"). That's the model's limit, not the prompt's. What did help is
+writing spoken flags in code (`spokenFlags`, terminal style only). "git
+commit dash dash amend" has one right answer, so no model is asked for it.
+The default stays qwen3.
 `large-v3-turbo` Q5_0 is half the disk and ~0.4s faster for ~1 point more
 word error and 4 fewer names right; `qwen2.5:1.5b` is about twice as fast per call and
 2.5 GB smaller, but fails 3 of 11 held-out cases.
 
-Re-run both when a new model comes out. `bench:cleanup` needs the models
-pulled into Ollama first, and both take a few minutes.
+**Both together,** `bun run bench:e2e --speech <file> --cleanup <model>`
+(2026-10-12, same machine): each of the 64 clips through `runPipeline`
+itself, VAD, Whisper, the gate and the cleanup, no dictionary. "WER raw" is
+Whisper's transcript against the words spoken; "WER final" and "Exact" are
+the typed text against what the cleanup should make of it (the sentence as
+written, or for the shopping sentence, a list). Time runs from the end of the
+clip to the final text, warm.
+
+| Speech | Cleanup | WER raw | WER final | Exact | Names | Median | p90 | Cleaned / skipped |
+|---|---|---|---|---|---|---|---|---|
+| large-v3-q5_0 | qwen3:4b-instruct-2507-q4_K_M | 3.2% | 8.7% | 34/64 | 17/32 | 1622 ms | 2057 ms | 10 / 54 |
+| large-v3-q5_0 | qwen2.5:1.5b | 3.2% | 12.6% | 34/64 | 17/32 | 1655 ms | 1942 ms | 10 / 54 |
+| large-v3-turbo-q5_0 | qwen3:4b-instruct-2507-q4_K_M | 4.2% | 8.9% | 32/64 | 13/32 | 1179 ms | 1837 ms | 13 / 51 |
+| large-v3-turbo-q5_0 | qwen2.5:1.5b | 4.2% | 13.5% | 32/64 | 13/32 | 1220 ms | 1510 ms | 13 / 51 |
+
+On synthetic voices the gate skips the cleanup for most clips, so the speech
+model decides most of the result. The final error is above the raw error
+because of the one list sentence: `qwen3:4b` makes the list but drops "on the
+way home", and `qwen2.5:1.5b` keeps it a sentence. The defaults stay.
+
+Re-run all three when a new model comes out. `bench:cleanup` and `bench:e2e`
+need the models pulled into Ollama first, and each takes a few minutes. A
+fresh `bench/corpus/` is worth a look: on 2026-10-12 `say` rendered ten Aman
+and Tara clips garbled (1.2-10 s long), once. This Mac also has a Siri voice
+with each of those names. Deleting the clips and running again fixed them, and
+the raw word error then matched `bench:models` again.
 
 ## 8. Acquisition, storage & integrity
 
