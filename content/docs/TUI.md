@@ -182,8 +182,9 @@ flowchart LR
 ```
 
 Four screens, matching
-[ARCHITECTURE.md §15](./ARCHITECTURE.md#15-v1-scope) exactly — nothing
-added beyond what's already scoped there:
+[ARCHITECTURE.md §15](./ARCHITECTURE.md#15-v1-scope), plus two built
+around the commands rather than the daemon: the launch animation and the
+home screen. Neither needs the IPC socket.
 
 ### Launch animation (built)
 - Plays when `mockingbird start` runs in a terminal, for as long as the
@@ -203,6 +204,91 @@ added beyond what's already scoped there:
   `lavender` and `blue`. The wordmark is a `sky` gradient and the tagline is
   `yellow`. They're written as 24-bit escapes, and Bubble Tea downsamples them
   for terminals with fewer colors and drops them under `NO_COLOR`.
+
+### Home screen (built)
+- Opens when `mockingbird` runs with no command in a terminal of at least
+  40×20. Piped output, `TERM=dumb` and smaller terminals get the engine's plain
+  usage text, the same as `mockingbird --help`.
+- The top line says whether the background agent is running. Each state has a
+  symbol and a word as well as a color: `● running` in `green`, `○ stopped` or
+  `○ not started yet` in `yellow`, `✕ crashed` or `✕ exited` in `red`.
+- When the running agent last reported a permission missing, a `red` line
+  under the title says `✕ missing Input Monitoring` (or whichever), with a
+  `yellow` one under it: `! allow it in System Settings → Privacy & Security,
+  then restart`. These lines wrap rather than cut, so a narrow terminal still
+  shows the permission's name and the next step in full. These are the agent's own grants, read from its latest `checks:`
+  line in `agent.log`, not the terminal's, which can differ.
+- When tapping Fn opens something in macOS, a `yellow` line says so:
+  `! tapping Fn opens Show Emoji & Symbols, so tapping won't dictate`.
+- The cursor starts on the command that fixes the first problem: `start` for
+  an agent that isn't running, `restart` for a missing permission, `fn` for a
+  taken Fn key. The list keeps its order, so it reads the same every time.
+- Below it, the engine's commands with their one-line summaries, cut to the
+  terminal's width. The list comes from `mockingbird help --json` (the
+  `COMMANDS` list in `apps/daemon/src/cli.ts`, which also builds `--help`), so
+  the two can't drift apart. The same call carries `mockingbird status --json`:
+  `{"agent", "missing", "fnAction"}`, with `missing` null until the
+  running agent has reported.
+- `↑`/`↓` or `k`/`j` move, `Enter` runs the command as if it were typed (so
+  `start` still plays the launch animation), and `q`, `Esc` or `Ctrl+C` quit.
+  The menu erases itself either way, so the scrollback holds only what the
+  command printed.
+- The selected row is `mauve` with a `▸` pointer, names are `text`, summaries
+  `subtext0` and the key hints `overlay0`.
+- An engine without `help --json` (an older clone) gets the plain usage text.
+- Not built yet (#50): the install ending on this screen, which needs #49 to
+  put the Go command in place first.
+
+### Guided setup (built)
+- `mockingbird setup`, in a terminal of at least 80×20, or `setup` from the
+  home screen. Smaller terminals and piped output get the same steps as text.
+- A checklist, one step at a time, each checked before it moves on:
+  1. **mockingbird is running.** Runs `start` if it isn't. If the agent still
+     isn't running after that, it says so and points at `status` and the log
+     rather than trying again by itself.
+  2. **Input Monitoring, Accessibility, Microphone**, each with why it's
+     needed. For the first one the agent reports missing, System Settings
+     opens at its pane. Enter restarts the agent (macOS reads permissions when
+     a program starts) and reads its checks again. A permission still off
+     says to check the switch is on for "mockingbird" or "bun", and for the
+     microphone, that Sound → Input picks the right one.
+  3. **The Fn key is free.** Only when tapping Fn opens something in macOS,
+     which includes a key nobody ever set: `status` reports it as "the macOS
+     default (usually the emoji picker)", and only an explicit "Do Nothing"
+     counts as free (#31). Before that, a new Mac skipped this step and was
+     told to double-tap. It asks `Y/n` before running `fn`, since it changes
+     a system-wide setting, and shows the undo command. `Enter` or `y` is yes; it never changes the
+     setting without one. Once freed, the step reads "free for dictation once
+     you log out": the setting reads back as free at once, but macOS keeps the
+     old action until a log out (#31).
+  4. **A test dictation.** Waits up to two minutes for the agent's next
+     dictation in its log and says whether it was typed, heard nothing, or
+     couldn't be typed and why. `Enter` tries again, `s` skips.
+  5. "All set", with how to dictate from now on. If this run freed Fn, it
+     ends instead on "One more step: log out of your Mac and back in", with
+     what tapping Fn still opens until then. It's the last line so it can't
+     be scrolled past. Before, setup said "All set … double-tap it for
+     hands-free" even though a double tap still opened the emoji picker.
+- Step states are `✓` (`green`), `▸` (`mauve`) and `·` (`overlay0`), so they
+  read without color. Notes are `yellow`, what's running is `sky`.
+- The engine does every step. The Go command calls `status --json`, `start`,
+  `restart`, `fn`, and two helpers only setup uses: `setup open <pane>` and
+  `setup await-dictation`. Nothing in Go writes state.
+- A first install ends here: once `install.sh` has put the Go command in
+  place, and its output is a terminal, it runs `mockingbird setup` with the
+  keyboard read from `/dev/tty` (under `curl | bash`, stdin is the script).
+  "First" means the agent was never set up (no plist yet), so an update
+  leaves a stopped agent stopped. An update, output to a file (a coding
+  agent's install), or no Go command gets the old "Now run:
+  `mockingbird start`" ending.
+- When `fn` fails to change the setting, the Fn step shows all of what it
+  printed. When it works, the step label and the last line carry the log out
+  instead.
+- Not built yet (#54): telling the user to restart the Mac when a permission
+  is on but still not applied, and opening System Settings' Keyboard pane
+  instead of writing the Fn default (expected to apply without a log out).
+  Both need checking on a real Mac first: #54 asks for the first to come from
+  real cases, and the second is untested.
 
 ### Dashboard (default view)
 - **Live hotkey FSM state** ([ARCHITECTURE.md §5](./ARCHITECTURE.md#5-the-hotkey-state-machine)),

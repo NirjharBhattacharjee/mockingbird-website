@@ -1,6 +1,6 @@
 # mockingbird — architecture bible
 
-> **Status:** v1 in progress — the pipeline (VAD → ASR → LLM → format), live microphone capture, the Fn hotkey FSM, text injection, and a `mockingbird` CLI that runs as a login agent exist; IPC, storage and the TUI do not yet.
+> **Status:** v1 in progress — the pipeline (VAD → ASR → LLM → format), live microphone capture, the Fn hotkey FSM, text injection, and a `mockingbird` CLI that runs as a login agent exist, and `data.db` holds the dictionary, edited over the IPC socket; history storage and the TUI do not yet.
 > **Owner:** bhattacharjeenirjhar26@gmail.com
 > **Last updated:** 2026-09-20
 
@@ -48,6 +48,19 @@ it is not a design doc that gets abandoned once code exists.
 | 2026-10-03 | Users get the Go `mockingbird` command. `release.yml` tests and builds `apps/cli` into `mockingbird-darwin-arm64`, with the tag built in for `--version`, and publishes it with its sha256 in `checksums.txt`. `install.sh` downloads it for the release it checks out, checks the sha256, keeps it at `apps/cli/mockingbird` in the clone, and writes a shim that runs it with bun's folder on the PATH. A clone that isn't on a release builds it with `go` if that's installed. Without either, or for a release from before the Go command, the shim runs the TypeScript CLI as before. The Homebrew formula builds it from source with `go` as a build-only dependency. The binary holds no macOS permissions, so replacing it on an update drops no grant (§12, §14, README.md). |
 | 2026-10-04 | Installs run in parallel and quietly. `mockingbird models pull` downloads the Whisper and VAD files while Ollama pulls the cleanup model, since they come from different servers, so the wait is the longer of the two rather than the sum; it still waits for both before reporting a failure. `install.sh` installs whatever tools are missing in one `brew install`, clones or updates the code at the same time, then runs `bun install`, then the model pull and the command download together. Each step writes its own log, `~/.mockingbird/logs/install-<step>.log`, so a step running alongside can't push a failure's reason out of view; the terminal shows one line per step and a ticking clock, and on a failure the end of that step's log, after every running step has finished. Writing the installer in Go was considered and not done: the time is in Homebrew and the downloads, which a Go installer would wait on just the same (§12). |
 | 2026-10-04 | Cleanup is typed as it's written. `OllamaProvider.stream` reads Ollama's reply as it comes, and `cleanUp` hands the session each safe piece (`verifiedPrefix`: the transcript's own words, in order) instead of waiting for the whole cleanup. The eval's cases on an M3: first words after a median 240ms instead of 626ms, long passage 1.1s instead of 3.8s, dev 30/30 and held-out 11/11 as before. A cleanup rejected after it began typing continues with the raw transcript rather than deleting anything (§6, SECURITY_PRIVACY.md). |
+| 2026-10-04 | Spoken corrections and symbols. The LLM gate no longer skips a transcript with a correction after a comma (", no wait", ", sorry", ", actually", ", make that", ", I meant") or a spoken symbol ("dash", "slash", "underscore"), however short or confident. Before, "docker ps dash a" and "at five, sorry, at six" were typed as said. The cleanup rules gain a self-correction rule. 12 new eval cases; with `qwen3:4b-instruct-2507-q4_K_M` on an M3, dev 35/37 → 36/37 and held-out 14/16 → 16/16, and the median model call no slower. The dev miss is a correction too short for `acceptCleanup`'s floor, which stays at half the transcript (MODELS.md §5). |
+| 2026-10-11 | Downloads show how far they've got. `mockingbird models pull` counts the bytes of each Whisper and VAD file as they arrive, and pulls the cleanup model through Ollama's `/api/pull` (`pullOllamaModel` in `packages/llm`) instead of running the `ollama` command, which printed its own bars. It draws one line, `Whisper ███░░░░░ 0.4/1.1 GB   cleanup model █░░░░░░░ 0.3/2.5 GB`, in place on a terminal. When `install.sh` sets `MOCKINGBIRD_PROGRESS`, it also writes that line to the file, and the install shows it instead of the clock while a download is running. Same downloads, same servers: only the display changed (§9). |
+| 2026-10-11 | The dictionary moves into SQLite (#61). `packages/store` opens `data.db` with the `dictionary` table (DATABASE.md §5); the daemon imports `~/.mockingbird/dictionary.txt` once and renames it `.imported`. The daemon counts a use when a typed transcript contains a term, and a dictionary over 50 terms gives the cleanup prompt only the terms this transcript seems to say, then the most used (MODELS.md §4a). First IPC: the daemon listens on `~/.mockingbird/mockingbird.sock` (`0600`) and `mockingbird dictionary add/remove` asks it to write; `list` reads `data.db` read-only. The socket speaks HTTP (`Bun.serve({ unix })`) for these request/reply edits; the TUI's live event stream (NDJSON) isn't built yet. If data.db can't be opened, dictation runs without the dictionary. |
+| 2026-10-11 | Bare `mockingbird` opens a home screen in the Go command: the agent's state and the engine's commands, picked with the arrow keys and run as if typed. The engine owns the list: `COMMANDS` in `apps/daemon/src/cli.ts` builds both `--help` and `help --json`, which the Go command reads along with the agent's state, so the Go side copies nothing. It also shows the permissions the running agent last reported missing (its own `checks:` line, not the terminal's grants) and a Fn key macOS has taken, from `mockingbird status --json`, and the cursor starts on the command that fixes the first problem. Output that isn't a terminal, or a terminal under 40×20, still gets the plain usage text (TUI.md §5). |
+| 2026-10-11 | `mockingbird setup` guides the first run in the Go command: start the agent, switch on each permission it reports missing (opening System Settings, then restarting the agent to check), offer to free Fn after a yes, and a test dictation confirmed from the agent's log. The engine does every step; Go only draws the checklist and calls `status --json`, `start`, `restart`, `fn`, `setup open <pane>` and `setup await-dictation`. When to tell someone to restart their Mac is left out until real cases show it (TUI.md §5). |
+| 2026-10-12 | `mockingbird uninstall` (#55) removes what an install put on the Mac after one question: the agent and its plist, Fn given back, `~/.mockingbird` (offering to keep the dictionary words as text first), the command and the installer's PATH line, and the code only when it's the installer's clean clone. A Homebrew install is pointed at `brew uninstall`. It asks again before `ollama rm` and never removes the Homebrew tools. macOS's Privacy entries are left for the user to clear by hand: `tccutil reset` hasn't been tested on a real Mac (`apps/daemon/src/uninstall.ts`). |
+| 2026-10-12 | The cleanup model can be picked with a command (#51). `mockingbird models` lists what Ollama has that can write text (`listOllamaModels` in `packages/llm`, using `/api/tags` and each model's capabilities from `/api/show`), with the eval's scores. `models use <name>` asks the daemon over its socket to save `llm_model` in the new `settings` table and restarts the agent, which reads it at start. Order of precedence: `MOCKINGBIRD_LLM_MODEL`, then the saved choice, then the default. A plist variable was ruled out: `start` rebuilds the agent's environment from the shell each time, so a choice kept there would be lost. |
+| 2026-10-12 | The agent runs from an app bundle, `~/.mockingbird/bin/mockingbird.app`, instead of a bare copy of bun (#36). The bundle carries an `Info.plist` and the logo and is signed ad-hoc as `com.mockingbird.agent`, so Login Items and the Privacy lists show mockingbird's name and icon rather than a generic executable. The move is a new identity to macOS, so every install re-grants Microphone, Accessibility and Input Monitoring once (§8, SECURITY_PRIVACY §4). |
+| 2026-10-13 | A first install ends in `mockingbird setup` (#54): when the Go command is in place and the install's output is a terminal, `install.sh` runs it with the keyboard read from `/dev/tty`, since under `curl \| bash` stdin is the script. Updates, output to a file and installs without the Go command keep the printed ending. `fn` and `fn --undo` now say "log out of your Mac (Apple menu → Log Out)" and that `mockingbird restart` isn't enough: a tester read "restart" as the command. |
+| 2026-10-14 | When recording starts in a browser, the session does one accessibility read of the caret and ignores the result (#32). The first such read switches Chrome's accessibility on, and Google Docs rebuilds its editor in response; in a fresh Doc, a dictation typed right after that first read was lost entirely. Doing it while the user speaks lets the editor settle before typing. `packages/context` gained `isBrowser`, a list of bundle IDs. This replaces a change typing one character per key event in browsers, which was reverted: Docs in Chrome takes 20-character events in full. |
+| 2026-10-14 | An interrupted model download continues where it stopped (#30): `models pull` keeps the `.part` file and asks for the rest with an HTTP `Range` request, and starts over if the server sends the whole file instead. Both hosts honour it (GitHub for the VAD model, Hugging Face for Whisper). The sha256 check is unchanged, so a damaged part is still thrown away. A first install also checks for about 5 GB free before downloading anything, and says it takes about 10 minutes. |
+| 2026-10-16 | Decided how to capture system audio, the other side of a call (#90): a Core Audio process tap, reached from `bun:ffi` and `objc_msgSend` with no Swift or Objective-C of ours. A spike built the tap and an aggregate device around it and recorded it with ffmpeg like a microphone, on macOS 26. Nothing ships yet; #89 builds it. Details in [§16](#16-known-gaps--scope-not-yet-decided). |
+| 2026-10-16 | `mockingbird mcp` (#88): an MCP server over stdin/stdout, hand-rolled (`initialize`, `ping`, `tools/list`, `tools/call`) rather than the SDK, which would be a dependency for about 60 lines of JSON-RPC. Its tools are `transcribe`, `frames`, `status`, `dictionary_list` and `dictionary_add`. `transcribe` splits a file at the VAD's speech segments into pieces of up to 30 seconds, sends each to Whisper, and timestamps lines from Whisper's word times (a new line at a sentence end after 20 s, always by 60 s). It skips the cleanup model, since the client's is stronger on a whole meeting. One-off runs (`transcribe`, `mcp`) now start their own whisper-server on a free port: on 8771 they had quietly shared the agent's, so a long file would have held up dictation. A 27-minute file took 262 s on an M3. |
 
 ---
 
@@ -145,7 +158,7 @@ thing a user installs and sees. A Go binary starts instantly and ships as
 one file, with no runtime to install before it can run. Bubble Tea and
 Lip Gloss cover the launch animation and the screens in TUI.md. The command
 needs none of the macOS permissions the engine holds. Those stay with the
-engine's runner binary, `~/.mockingbird/bin/mockingbird`, so rebuilding the
+engine's runner, `~/.mockingbird/bin/mockingbird.app`, so rebuilding the
 command never drops a user's Fn or typing grant. The engine stays
 TypeScript. It works, it's tested headlessly, and a rewrite would gain
 nothing.
@@ -452,6 +465,11 @@ verifiable, not just promised.
   default) for debugging/training-their-own-dictionary purposes.
 - **The IPC socket is a Unix domain socket with `0600` permissions**, not a
   TCP port — nothing on the network, even the local network, can reach it.
+- **The MCP server is the one way text leaves mockingbird, and only to the
+  user's own AI client.** `mockingbird mcp` speaks over stdin/stdout to a
+  client the user registered, with no port. If that client sends the text to
+  a cloud model, that's the client's network call, not mockingbird's
+  ([MCP.md](./MCP.md), [SECURITY_PRIVACY.md §3](./SECURITY_PRIVACY.md#3-network-policy)).
 - **Enforced, not just claimed:** the shipped binary requests no outbound
   network entitlement beyond what's needed for the explicit model-download
   command. Anyone can `lsof -i` while dictating and see nothing outbound.
@@ -690,6 +708,9 @@ flowchart TB
    needed to test 90% of the interesting logic.
 6. A `bun build --compile` smoke test on a macOS runner — catches bundling
    breakage before release day.
+7. On pull requests, a `dco` job checks every commit carries a
+   `Signed-off-by` line for its author
+   ([CONTRIBUTING.md §11](../CONTRIBUTING.md#11-contributor-licensing--dco-not-a-cla)).
 
 **`release.yml`** (runs on `v*.*.*` tag push). What it does today:
 
@@ -698,10 +719,13 @@ flowchart TB
 3. Test `apps/cli` and build it into `mockingbird-darwin-arm64`, with the
    tag built in for `mockingbird --version`.
 4. Pack the source with `git archive` into `mockingbird-<version>.tar.gz`
-   and write its sha256 and the binary's to `checksums.txt`.
-5. Create the GitHub Release with the three files and notes generated from
-   the merged PRs.
-6. Open a PR on `NirjharBhattacharjee/homebrew-mockingbird` setting the
+   and write its sha256, the binary's and `install.sh`'s to `checksums.txt`.
+5. Create the GitHub Release with those four files and notes generated from
+   the merged PRs. `install.sh` is attached so the README's install command
+   (`releases/latest/download/install.sh`) runs the released installer, not
+   whatever `main` has. A tag with a `-` (`v0.2.0-rc.1`) is published as a
+   prerelease, which GitHub never marks latest.
+6. Except for a prerelease, open a PR on `NirjharBhattacharjee/homebrew-mockingbird` setting the
    formula's `url` and `sha256` to the new tarball. The workflow's own token
    can't write to another repo, so this needs a `TAP_TOKEN` secret (a
    fine-grained token with contents and pull-request write access to the
@@ -723,9 +747,14 @@ Once the compiled binary exists, it grows into the full version:
    the formula's version and sha256 — reviewed and merged by us, not
    auto-merged, at least until the process has proven itself.
 
-**Branch protection:** once this repo is pushed to GitHub, `main` should
-require `ci.yml` green before merge, and releases should only ever be cut
-from tags on `main`.
+**`main` is staging, releases are production.** Merging a PR changes `main`
+and nothing users run: the installer and the Homebrew tap both install the
+latest release tag. Two GitHub rulesets hold this in place. On `main`: a pull
+request for every change, squash merge only, `check` and `cli` green, review
+threads resolved, no force-push or deletion. On `v*` tags: only a repository
+admin can create, move or delete one, and `release.yml` refuses any not on
+`main`. A prerelease tag is the beta channel: the installer only picks it up
+with `MOCKINGBIRD_CHANNEL=beta`, and the Homebrew tap never does.
 
 **Why Changesets specifically:** this is a multi-package Bun workspace
 (`packages/protocol`, `packages/asr`, etc.) and Changesets is built for
@@ -749,6 +778,8 @@ has a fixed line to improve past:
 - SQLite-backed history with full-text search, exposed via the TUI.
 - Bubble Tea dashboard (Go, `apps/cli`): live state, latency waterfall,
   history browser, dictionary editor.
+- A home screen for bare `mockingbird`: the agent's state and every command,
+  picked with the arrow keys ([TUI.md §5](./TUI.md#home-screen-built)).
 - Homebrew + curl installer distribution.
 - No GUI app, no menubar icon, no floating HUD — audio cues + TUI only.
 
@@ -781,9 +812,10 @@ actual decision before or during v1, not an assumption:
   `start`. `KeepAlive` is `Crashed`-only, so a deliberate exit (no microphone,
   a missing model) doesn't relaunch every 10s forever. macOS attributes the Fn
   and typing permissions to the binary launchd runs, which is
-  `~/.mockingbird/bin/mockingbird` — a copy of the bun binary re-signed under
-  our own identifier, so the Privacy lists name mockingbird and `bun` itself
-  stays unprivileged. What that copy costs is in SECURITY_PRIVACY §4; a truly
+  `~/.mockingbird/bin/mockingbird.app/Contents/MacOS/mockingbird`: a copy of
+  the bun binary inside an app bundle signed as `com.mockingbird.agent`, so the
+  Privacy lists and Login Items show mockingbird's name and logo, and `bun`
+  itself stays unprivileged. What that copy costs is in SECURITY_PRIVACY §4; a truly
   compiled binary is still blocked on `onnxruntime-node`.
 - ~~**Auto-update.**~~ Settled 2026-10-01: there is no self-update command.
   Updating is re-running the install command or `brew upgrade`, both run by
@@ -808,6 +840,36 @@ actual decision before or during v1, not an assumption:
   `--device <n|name>` override it per run. Not yet decided: persisting the
   choice in `settings`, and following the system default when it changes
   while mockingbird is running (today that needs a restart).
+- **System audio (#90).** Decided, not built. A call's other voices come
+  through system audio, which ffmpeg can't capture. A Core Audio process tap
+  can (macOS 14.2+), and needs no driver:
+  1. `[[CATapDescription alloc] initStereoGlobalTapButExcludeProcesses:@[]]`
+     through `objc_msgSend`, left public and unmuted, then
+     `AudioHardwareCreateProcessTap`.
+  2. `AudioHardwareCreateAggregateDevice` with the tap in `taps`,
+     `tapautostart`, and the default output device as `master` and only
+     sub-device. Without that clock the tap records silence.
+  3. ffmpeg records the aggregate device with avfoundation, like a
+     microphone, so the capture code stays as it is.
+
+  Measured in a spike: with the Mac's output muted, the recording still
+  held the speech at a mean of −17.7 dB, and transcribed word for word. The
+  tap and the device go away when the process that made them exits.
+
+  Permission: Apple requires `NSAudioCaptureUsageDescription` in the
+  `Info.plist` of an app that captures system audio, so `mockingbird.app`
+  gets one when #89 ships. Still open for #89: which process macOS asks
+  about, the agent or its ffmpeg child, and what the "System Audio
+  Recording" prompt looks like. The terminal in the spike got no prompt.
+
+  Before macOS 14.2 there are no process taps. The fallback, set up by the
+  user:
+  1. `brew install blackhole-2ch`, which installs the BlackHole 2ch device.
+  2. In Audio MIDI Setup, **+** → Create Multi-Output Device, with the
+     speakers (or headphones) and BlackHole 2ch both ticked.
+  3. In System Settings → Sound → Output, pick that Multi-Output Device.
+
+  ffmpeg then records BlackHole 2ch with avfoundation, as it is.
 - **End-to-end latency target.** Each stage is timed (`vadMs`, `asrMs`,
   `llmMs`) and the changelog above records what those numbers were at each
   change, but nothing sets how long the whole release-to-typed-text path

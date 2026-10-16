@@ -79,7 +79,7 @@ until it's explicitly closed.
 | Which app you dictated into | Medium — behavioral/usage signal | `utterance.app_bundle` | Yes |
 | Per-stage latency timings | Low | `utterance.t_*` columns | Yes |
 | User dictionary (names, jargon, codenames) | Medium–High — can include proper nouns like client/project names | `dictionary` table | Yes |
-| Correction history (what got edited after the fact) | Medium–High — can reconstruct sensitive corrections | `correction` table | Yes |
+| Correction history (word pairs from fixes you made to a dictation, e.g. "near jar" → "Nirjhar") | Medium — names and jargon, never the text around them | `correction` table | Yes, until `mockingbird dictionary forget` |
 | Settings (hotkey binding, model choice) | Low | `settings` table | Yes |
 | ASR/LLM model weights | None (public model files) | `~/.mockingbird/models/` | Yes, on disk |
 | Logs | Variable — see [§8](#8-known-privacy-issues--open-unresolved) | `~/.mockingbird/logs/` | Yes, rotated |
@@ -105,6 +105,15 @@ mechanical guarantee, per [ARCHITECTURE.md §9](./ARCHITECTURE.md#9-everything-i
   print the exact URL being fetched (Hugging Face / ggml repos), and never
   run silently in the background (this rules out silent auto-update checks
   too — see [§16 of ARCHITECTURE.md](./ARCHITECTURE.md#16-known-gaps--scope-not-yet-decided)).
+- **`mockingbird mcp` hands text to an AI client, and the client decides
+  where it goes** ([MCP.md](./MCP.md)). The server opens no port: the client
+  starts it and talks over stdin/stdout. It runs only when the user has
+  registered it with a client, and mockingbird itself still calls no model.
+  But a transcript it returns to a client backed by a cloud model goes to
+  that model's provider, as if the user had pasted it there. That's the
+  user's choice in their own tool, not a network call mockingbird makes, and
+  the docs say so where the server is set up. Its `transcribe` reads any file
+  path the client passes; the client can already read those files itself.
 - **The stack rule in [ARCHITECTURE.md §3](./ARCHITECTURE.md#3-technology-stack)
   is itself a security control**: every dependency is either code we wrote
   (auditable) or a binary we `fetch()`/`spawn()`/load as a prebuilt module
@@ -181,7 +190,8 @@ lives in `packages/inject/src/typing.ts`. As implemented today it:
   model adds stops it there, and the rest waits for the whole cleanup and
   `acceptCleanup`, as before. Text already typed is never deleted again: if
   the cleanup is then rejected, your transcript carries on from where the
-  typed words stopped. A terminal never gets text early;
+  typed words stopped. Words the model left out of the typed part, at most
+  five in a row, stay out. A terminal never gets text early;
 - reads **one character** of what's already in that app: the one just before
   the cursor (or before the selection), so a new sentence gets a space after
   the last one. `packages/context/src/caret.ts` asks for exactly that range
@@ -222,10 +232,17 @@ to the terminal app — which is why `mockingbird listen` uses Ghostty's or
 Terminal's grants. Under launchd there is no such parent, so the agent's own
 executable becomes responsible.
 
-`mockingbird start` therefore does not run the agent as `bun`. It installs
-**`~/.mockingbird/bin/mockingbird`** — a copy of the Bun binary, re-signed
-ad-hoc under the identifier `mockingbird` — and points the LaunchAgent at
-that. The grants land on it, and three things follow:
+`mockingbird start` therefore does not run the agent as `bun`. It builds
+**`~/.mockingbird/bin/mockingbird.app`**, a small app bundle with a copy of
+the Bun binary as its executable, an `Info.plist` and the logo, signed ad-hoc
+as `com.mockingbird.agent`. The LaunchAgent runs
+`mockingbird.app/Contents/MacOS/mockingbird`. The grants land on the bundle,
+and four things follow:
+
+- **The Privacy lists and Login Items show mockingbird's name and logo** (#36).
+  macOS takes both from the bundle; a bare executable only ever gets the
+  generic icon. It's still labelled as from an unidentified developer, since
+  only a paid Apple Developer ID changes that.
 
 - **`bun` itself needs no permission.** Had the agent run as
   `/opt/homebrew/bin/bun`, Accessibility and Input Monitoring on that binary
@@ -235,12 +252,15 @@ that. The grants land on it, and three things follow:
   alone. A separately-named copy is a separate TCC client, so that does not
   happen. Anyone upgrading from an earlier build should remove `bun` from both
   Privacy lists.
-- **The grants survive upgrades and edits.** TCC keys an unbundled client by
-  resolved path plus, absent a signing identity, its cdhash. Our copy changes
-  on neither `brew upgrade bun` (it is ours, not Homebrew's) nor a `git pull`
-  (it is the runtime, not our TypeScript). `mockingbird start` re-copies only
-  when the installed bun has actually changed, and says so, because that is
-  the one moment the grants need redoing.
+- **The grants survive upgrades and edits.** TCC keys the client by its
+  bundle identifier plus, absent a signing identity, its cdhash. The bundle
+  changes on neither `brew upgrade bun` (it is ours, not Homebrew's) nor a
+  `git pull` (it is the runtime, not our TypeScript). `mockingbird start`
+  rebuilds it only when the installed bun or the bundle itself has changed,
+  and says so, because that is the one moment the grants need redoing.
+  Moving from the old bare runner, `~/.mockingbird/bin/mockingbird`, to the
+  bundle is one of those moments: every install re-grants once, and the old
+  entry can be removed from each list.
 - **The checkout becomes security-critical.** The binary executes
   `apps/daemon/src/agent.ts` from wherever mockingbird was installed, and it
   holds Accessibility. Anyone who can write to that directory, or to
@@ -275,6 +295,11 @@ time. Both are tracked in [§9](#9-hardening-roadmap).
   training set). This is the one piece of the inventory in
   [§2](#2-data-inventory--what-mockingbird-actually-touches) that defaults
   to *not* persisting.
+- **Uninstalling deletes it.** `mockingbird uninstall` removes
+  `~/.mockingbird`, `data.db` included, after one question. The dictionary
+  gets its own: the default keeps a copy of the words, as plain text in
+  `~/mockingbird-dictionary.txt`, and only the words. Nothing else from
+  `data.db` is copied out.
 - **The Unix socket is `0600`**, not a TCP port — only your own user account
   can connect to it, and it's deleted on clean daemon shutdown.
 - **Diagnostics export** (`mockingbird diagnostics export`, still
@@ -297,6 +322,41 @@ time. Both are tracked in [§9](#9-hardening-roadmap).
   opt-in escape hatch named above is `MOCKINGBIRD_LOG_TEXT=1`, which adds the
   text and is off by default. The agent truncates the file at 1 MB on start,
   because launchd appends to it forever and never rotates it.
+
+### Learning from your corrections
+
+When you fix a misheard word in something mockingbird typed, it reads the
+fix back and can add the word to the dictionary (#62). To do that it reads
+text in another app's field after you've edited it, so it keeps to these
+rules.
+
+- **Only the dictation and a little around it.** Right after typing it
+  notes where the dictation starts and up to 30 characters either side,
+  in memory. Later it reads that span again with up to 100 characters of
+  slack, in case the text moved. It never asks the app for the whole field.
+- **Only once you're done, and only if you touched it.** That means some
+  typing or clicking and then 5 seconds of quiet, or the start of the next
+  dictation. With no input since the dictation, it reads nothing. It never
+  records keystrokes. The event tap still reduces every key except Fn to a
+  bare "input" event.
+- **Only the same app.** Every read after the first checks which process the
+  focused field belongs to before reading anything from it, and stops if it
+  isn't the app the dictation went into.
+- **Never password fields** (`AXSecureTextField`), terminals, or apps listed
+  in `MOCKINGBIRD_LEARN_EXCLUDE` (bundle ids, comma separated).
+- **Only word pairs are stored**, with a count: never the text around them,
+  and neither the pair nor the text is logged. The log says only that a word
+  was learned.
+- **No ordinary words.** It never adds a word from the system word list,
+  `/usr/share/dict/words`, so a fix like "great" → "grate"
+  can't start rewriting every later "great".
+- **Off with `MOCKINGBIRD_LEARN=0`.** `mockingbird dictionary` lists learned
+  words (marked `# learned`), `mockingbird dictionary remove <word>` drops one
+  with its pairs, and `mockingbird dictionary forget` deletes every learned
+  word and every pair.
+
+It can't learn in apps that don't expose their text through Accessibility,
+such as Google Docs and many Electron apps.
 
 ## 6. Process & trust boundaries
 
@@ -353,6 +413,9 @@ flowchart LR
   tools come from Homebrew (sha256 per formula) and the models are pinned and
   sha256-checked (`apps/daemon/src/models.ts`). Re-running it is also how a
   user updates, and it refuses to overwrite a clone with local edits.
+  If Homebrew is missing and the user says yes, it runs Homebrew's own
+  installer from `raw.githubusercontent.com/Homebrew/install`, unpinned,
+  the way brew.sh tells people to install it.
 - **The Homebrew formula** (in `NirjharBhattacharjee/homebrew-mockingbird`)
   pins each release's source tarball by sha256. CI opens the PR that bumps
   it; a person merges it, so a release reaches `brew upgrade` only after
@@ -428,7 +491,7 @@ this is a "if solving one of these, start here" list:
    keychain fixes the second (the designated requirement keys on the
    certificate, not the cdhash); the first needs the dylib shipped beside the
    binary or VAD moved off `onnxruntime-node`. Until then the re-signed copy
-   in [§4](#4-macos-permissions-tcc) carries the grants, and the checkout it
+   bundle in [§4](#4-macos-permissions-tcc) carries the grants, and the checkout it
    runs is part of the trusted computing base.
 2. **Encrypt `data.db` at rest**, or at minimum document and default to
    `0600`/`0700` permissions on `~/.mockingbird` and its contents at setup
