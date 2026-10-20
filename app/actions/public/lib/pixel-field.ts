@@ -251,7 +251,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       // fits the screen above the panel that peeks in at the bottom; the
       // road is a landscape that runs on under it
       let fit = shape === 'road' ? 1.05 : 0.66
-      let size = Math.max(8, Math.floor(Math.min(r.width * 0.88, H * fit) / cell))
+      let size = Math.max(8, Math.floor(Math.min(r.width * 0.88, r.height * fit) / cell))
       let cells = buildShape(shape, size, logo)
       // shuffle, so a morph sends pixels criss-crossing like a flock
       cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
