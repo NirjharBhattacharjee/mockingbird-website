@@ -28,6 +28,8 @@ const ICON = {
   magic: '\uf0d0',
   cursor: '\uf246',
   terminal: '\uf489',
+  book: '\uf02d',
+  plug: '\uf1e6',
 }
 
 /** Resolves once the shapes' glyphs can be drawn on a canvas. */
@@ -146,6 +148,9 @@ export const MOTION: Record<string, Motion> = {
   lock: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
   // the road stays put: you're driving down it
   road: {},
+  // the dictionary and the plug turn like the lock
+  book: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
+  plug: { spin: 0.35, tilt: 0.26, holdOnTouch: true },
 }
 
 /**
@@ -164,6 +169,9 @@ export const AMBIENT: Record<string, Ambient> = {
   lock: 'motes',
   road: 'rush',
   heart: 'rise',
+  book: 'motes',
+  rec: 'orbit',
+  plug: 'rise',
 }
 
 /** The pipeline ring's radius, as a share of the shape: wide enough to clear the panel. */
@@ -268,6 +276,32 @@ export function buildShape(name: string, size: number, logo: HTMLImageElement | 
     }
     case 'terminal':
       return rasterize(size, [icon(ICON.terminal, 'green')])
+    case 'book':
+      return extrude(rasterize(size, [icon(ICON.book, 'mauve', 0.98)]), Math.max(4, Math.round(size * 0.08)))
+    case 'plug':
+      return extrude(rasterize(size, [icon(ICON.plug, 'sky', 0.98)]), Math.max(4, Math.round(size * 0.08)))
+    case 'rec':
+      // A record light: a ring, and the red dot inside it (group 1, it blinks)
+      return rasterize(size, [
+        {
+          role: 'peach',
+          draw: (ctx, s) => {
+            ctx.lineWidth = s * 0.06
+            ctx.beginPath()
+            ctx.arc(s / 2, s / 2, s * 0.36, 0, Math.PI * 2)
+            ctx.stroke()
+          },
+        },
+        {
+          role: 'red',
+          group: 1,
+          draw: (ctx, s) => {
+            ctx.beginPath()
+            ctx.arc(s / 2, s / 2, s * 0.22, 0, Math.PI * 2)
+            ctx.fill()
+          },
+        },
+      ])
     case 'lock': {
       // A padlock: a riveted body with a keyhole shaped like the bird, and a
       // shackle (group 1, so it can lift) with a peach highlight down one side.

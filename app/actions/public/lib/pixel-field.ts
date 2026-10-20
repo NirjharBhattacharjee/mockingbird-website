@@ -853,6 +853,8 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         // rim glows brighter with the voice level, like a backlit key
         if (pressed) goal = mix(goal, palette.crest, c.role === 'lavender' ? 0.35 + 0.5 * level : 0.35)
         if (!reduced && k === 1 && hash(c.x, c.y, Math.floor(now / 500)) > 0.985) goal = palette.crest
+        // the record light blinks
+        if (c.group === 1 && active === 'record' && !reduced && now % 1200 > 800) goal = mix(goal, palette.bg, 0.65)
         // a pulse runs round the orbit, listen → hear → tidy → type, and each
         // stage flares as it passes
         if (c.ring && !reduced) {

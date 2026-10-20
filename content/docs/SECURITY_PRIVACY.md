@@ -81,6 +81,7 @@ until it's explicitly closed.
 | User dictionary (names, jargon, codenames) | Medium–High — can include proper nouns like client/project names | `dictionary` table | Yes |
 | Correction history (word pairs from fixes you made to a dictation, e.g. "near jar" → "Nirjhar") | Medium — names and jargon, never the text around them | `correction` table | Yes, until `mockingbird dictionary forget` |
 | Settings (hotkey binding, model choice) | Low | `settings` table | Yes |
+| Recordings you start (`mockingbird record`) | High — whole conversations, and other people's voices | `~/.mockingbird/recordings/*.m4a` (folder `0700`) | **Yes**, until you delete them |
 | ASR/LLM model weights | None (public model files) | `~/.mockingbird/models/` | Yes, on disk |
 | Logs | Variable — see [§8](#8-known-privacy-issues--open-unresolved) | `~/.mockingbird/logs/` | Yes, rotated |
 
@@ -135,7 +136,7 @@ about what each one actually means:
 
 | Permission | Why it's needed | What it *also* grants |
 |---|---|---|
-| **Microphone** | Capture audio for dictation | Nothing beyond mic access — the narrowest of the three |
+| **Microphone** | Capture audio for dictation, and system audio in `mockingbird record` (#94): reading the system-audio tap's device counts as microphone access, given `NSAudioCaptureUsageDescription` in `mockingbird.app` | During a recording, everything the Mac plays, other people's voices on a call included. Dictation alone never opens the tap |
 | **Accessibility** | Type dictated text into the focused app (`CGEventPost`), and read the one character before the cursor there, to decide on a space | Broad UI automation: the ability to synthesize any input into any app |
 | **Input Monitoring** | Global hotkey detection (CoreGraphics event tap via `bun:ffi`) | **System-wide keystroke observation** — the same class of access a keylogger needs |
 | macOS grants storage (which apps hold which TCC grants) | — | Lives in Apple's TCC database, **not** ours — see [state ownership map, ARCHITECTURE.md §8](./ARCHITECTURE.md#8-state-ownership-map) |
@@ -148,12 +149,16 @@ something the OS permission model itself prevents. Anyone auditing this
 project for trust should start at `packages/hotkey/src/event-tap.ts`, the most
 security-sensitive file in the repo. As implemented today, that file:
 
-- creates the tap with `kCGEventTapOptionListenOnly`, so events are observed
-  and never modified or swallowed;
-- **drops the keycode of every key except Fn and Esc inside the tap
-  callback**, so no other key's identity is ever passed on, stored, or
-  logged: the filter is one function (`TapDecoder.decode`), deliberately easy
-  to verify;
+- creates the tap with `kCGEventTapOptionDefault`, which may drop events, and
+  drops exactly one: R while Fn is held (Fn+R starts or stops a recording),
+  so the focused app doesn't type it. Every other event passes through
+  unmodified. Without Accessibility, which a blocking tap needs, it falls back
+  to `kCGEventTapOptionListenOnly` and Fn+R types an "r" as well;
+- **drops the keycode of every key except Fn, Esc, and R while Fn is held
+  inside the tap callback**, so no other key's identity is ever passed on,
+  stored, or logged, and an "r" typed without Fn is as anonymous as any other
+  key: the filter is one function (`TapDecoder.decode`), deliberately easy to
+  verify;
 - reduces every other key press and every mouse click to a bare "input
   happened" with a timestamp and whether it was a key or a click, and no key,
   character, or position. A key press within 300ms of Fn is taken as part of
@@ -161,7 +166,7 @@ security-sensitive file in the repo. As implemented today, that file:
   use is deciding whether the text cursor may have moved since the last
   dictation (see below). Fn, the 🌐 key, and the key events mockingbird types
   itself (marked with `TYPED_EVENT_MARK`) don't count;
-- never records typed characters, only Fn/Esc identity and timing.
+- never records typed characters, only Fn/Esc/Fn+R identity and timing.
 
 Typing into other apps (Accessibility) is the mirror image of that risk, and
 lives in `packages/inject/src/typing.ts`. As implemented today it:
@@ -295,11 +300,27 @@ time. Both are tracked in [§9](#9-hardening-roadmap).
   training set). This is the one piece of the inventory in
   [§2](#2-data-inventory--what-mockingbird-actually-touches) that defaults
   to *not* persisting.
+- **Recordings are the one audio mockingbird keeps on purpose.**
+  `mockingbird record` starts one and `mockingbird record stop` ends it
+  (#89). It's the microphone stream dictation already reads, mixed with
+  everything the Mac plays (#94): on a call, that's the other people's
+  voices too. It's encoded to
+  `~/.mockingbird/recordings/<date>-<time>.m4a` in a `0700` folder, and kept
+  until you delete it: nothing expires or uploads it. Every start sets the
+  folder to `0700`, including one that already existed with looser
+  permissions (`Recordings.begin()`), since `mkdir` leaves an existing
+  folder as it was. A recording can't start
+  silently: its start and stop sounds play even with `MOCKINGBIRD_CUES=0`, a
+  reminder plays every 30 minutes, macOS shows its orange microphone dot, and
+  `mockingbird status` says `● recording`. It stops by itself after 3 hours
+  (`MOCKINGBIRD_RECORD_MAX_HOURS`). Recording people without their consent is
+  illegal in many places; the command says so when it starts.
 - **Uninstalling deletes it.** `mockingbird uninstall` removes
   `~/.mockingbird`, `data.db` included, after one question. The dictionary
   gets its own: the default keeps a copy of the words, as plain text in
   `~/mockingbird-dictionary.txt`, and only the words. Nothing else from
-  `data.db` is copied out.
+  `data.db` is copied out. Recordings get their own question too, and the
+  default moves them to `~/mockingbird-recordings`.
 - **The Unix socket is `0600`**, not a TCP port — only your own user account
   can connect to it, and it's deleted on clean daemon shutdown.
 - **Diagnostics export** (`mockingbird diagnostics export`, still

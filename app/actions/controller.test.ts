@@ -12,7 +12,10 @@ describe('root controller', () => {
 
     assert.equal(response.status, 200)
     assert.match(response.headers.get('Content-Type') ?? '', /text\/html/)
-    assert.match(await response.text(), /<html[\s>]/)
+    let body = await response.text()
+    assert.match(body, /<html[\s>]/)
+    // the dictionary, meeting recording and MCP scenes
+    for (let id of ['words', 'record', 'mcp']) assert.match(body, new RegExp(`data-scene="${id}"`))
   })
 
   it('keeps theme-init.js attributes across client-side navigations', async () => {

@@ -15,6 +15,9 @@ export const links = {
   architecture: '/docs/architecture',
   models: '/docs/models',
   privacy: '/docs/privacy',
+  mcp: '/docs/mcp',
+  dictionary: '/docs/models#4a-the-user-dictionary',
+  record: '/docs#mockingbird-record-record-a-meeting-to-a-file',
   philosophy: '/docs/philosophy',
 }
 
