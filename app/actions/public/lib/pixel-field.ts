@@ -820,7 +820,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // right behind the panel dim a little sooner, so the text stays readable
     // (not while flying: the panel is hidden then)
     let panel = flight.on ? undefined : f.anchor.parentElement?.querySelector('.panel')?.getBoundingClientRect()
-    let cover = panel ? Math.round(DIM_STEPS * clamp01((H * 0.85 - panel.top) / (H * 0.6))) : 0
+    let cover = panel ? Math.round(DIM_STEPS * clamp01((r.height * 0.85 - panel.top) / (r.height * 0.6))) : 0
     for (let [letter, g] of glitches) if (g.until < now) glitches.delete(letter)
 
     particles.forEach((pt, i) => {
