@@ -19,7 +19,9 @@ declare module 'remix' {
 export const router = createRouter<AppContext>({
   middleware: [
     compression(),
-    staticFiles('./public', { index: false, cacheControl: 'public, max-age=3600' }),
+    // revalidate every time (a 304 when unchanged): styles.css keeps its
+    // name across deploys, and an hour-old copy with new HTML breaks the page
+    staticFiles('./public', { index: false, cacheControl: 'no-cache' }),
     renderMiddleware,
   ],
 })
