@@ -148,8 +148,8 @@ export function ArrowLink(handle: Handle<{ href: string; children?: RemixNode }>
 
 export function Footer() {
   let columns: [string, [string, string][]][] = [
-    ['Explore', [['Demo', '/#demo'], ['How it works', '/#how'], ['Install', '/#install'], ["What's next", '/#next']]],
-    ['Docs', [['User guide', links.docs], ['Architecture', links.architecture], ['Models', links.models], ['Troubleshooting', links.troubleshooting]]],
+    ['Explore', [['Demo', '/#demo'], ['How it works', '/#how'], ['Dictionary', '/#words'], ['Meetings', '/#record'], ['AI clients', '/#mcp'], ['Install', '/#install'], ["What's next", '/#next']]],
+    ['Docs', [['User guide', links.docs], ['Architecture', links.architecture], ['Models', links.models], ['AI clients (MCP)', links.mcp], ['Troubleshooting', links.troubleshooting]]],
     ['Project', [['GitHub', links.repo], ['Releases', links.releases], ['Security & privacy', links.privacy], ['License (MIT)', links.license]]],
     ['Community', [['Issues', links.issues], ['Contributing', links.contributing], ['Philosophy', links.philosophy]]],
   ]

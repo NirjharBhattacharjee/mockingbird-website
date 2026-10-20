@@ -20,6 +20,9 @@ const SCENES = [
   { id: 'about', label: 'No meter', accent: 'var(--mauve)' },
   { id: 'demo', label: 'Hold fn', accent: 'var(--red)' },
   { id: 'how', label: 'Under the hood', accent: 'var(--teal)' },
+  { id: 'words', label: 'Dictionary', accent: 'var(--rosewater)' },
+  { id: 'record', label: 'Fn+R', accent: 'var(--red)' },
+  { id: 'mcp', label: 'AI clients', accent: 'var(--sky)' },
   { id: 'install', label: 'Install', accent: 'var(--green)' },
   { id: 'local', label: 'Stays local', accent: 'var(--yellow)' },
   { id: 'next', label: "What's next", accent: 'var(--blue)' },
@@ -39,6 +42,9 @@ export function HomePage() {
         <About />
         <Demo />
         <HowItWorks />
+        <Dictionary />
+        <Record />
+        <Mcp />
         <Install />
         <StaysLocal />
         <WhatsNext />
@@ -63,7 +69,7 @@ function Hero() {
     >
       <div class="flex w-full flex-col items-center text-center">
         <a href={links.releases} class="rise border border-sky/40 bg-crust px-3 py-1 text-[14px] text-sky hover:border-sky">
-          v0.1.1 is out. See what's new →
+          v0.2.3 is out. See what's new →
         </a>
 
         <div id="bird-slot" aria-hidden="true" class="mt-8" style={{ width: 'calc(var(--px) * 20)', height: 'calc(var(--px) * 26)' }} />
@@ -250,6 +256,218 @@ function HowItWorks() {
 
 // ---------------------------------------------------------------------------
 
+function Dictionary() {
+  // what Whisper heard → what the dictionary writes
+  let corrections: [string, string][] = [
+    ['Nurj Harbada Charjee', 'Nirjhar Bhattacharjee'],
+    ['Nerj Herbata Chargy', 'Nirjhar Bhattacharjee'],
+    ['cat puck', 'Catppuccin'],
+  ]
+  return () => (
+    <Scene id="words" shape="book" hue={hue('words')}>
+      <SceneHead
+        title={<>It spells <TypedText phrases={['your name.', 'your team.', 'your jargon.']} /></>}
+        lede="No model spells a name it has never seen. Tell mockingbird once, or just fix it once, and it gets it right from then on."
+      />
+      <ul class="divide-y divide-surface0 border-y border-surface0 text-[15px]">
+        {corrections.map(([heard, term]) => (
+          <li class="flex flex-wrap items-baseline gap-x-3 py-2.5">
+            <s class="text-overlay decoration-red/70">{heard}</s>
+            <span aria-hidden="true" class="text-rosewater">
+              →
+            </span>
+            <span class="sr-only">becomes</span>
+            <span class="font-bold text-text">{term}</span>
+          </li>
+        ))}
+      </ul>
+      <p class="mt-3 text-[14px] text-overlay">
+        Names are matched by sound, not spelling, so a name Whisper writes a new way each time still lands on yours.
+      </p>
+      <div class="mt-7">
+        <Tabs
+          name="words"
+          label="Dictionary"
+          tabs={[
+            {
+              label: 'Tell it',
+              color: 'var(--rosewater)',
+              body: (
+                <>
+                  <pre class="overflow-x-auto border border-surface0 bg-crust px-4 py-3 text-[14px] leading-relaxed text-text">
+                    <span class="text-green">$ </span>mockingbird dictionary add "Nirjhar Bhattacharjee"{'\n'}
+                    <span class="text-green">$ </span>mockingbird dictionary add "Catppuccin (a colour theme)"{'\n'}
+                    <span class="text-green">$ </span>mockingbird dictionary add "cat puck =&gt; Catppuccin"
+                  </pre>
+                  <p class="mt-3 text-[14px] text-overlay">A name to spell your way, a note for the cleanup model in brackets, or what it mishears and what to write instead.</p>
+                </>
+              ),
+            },
+            {
+              label: 'It learns',
+              color: 'var(--mauve)',
+              body: (
+                <div class="space-y-4 text-soft">
+                  <p>
+                    Fix a misheard name in the app you dictated into, and mockingbird adds it once you've made the same
+                    fix twice, or once if you capitalised it. It keeps the word pair and never the text around it.
+                  </p>
+                  <Spec
+                    rows={[
+                      ['Kept in', '~/.mockingbird/data.db, on your Mac'],
+                      ['Forget them', 'mockingbird dictionary forget'],
+                      ['Turn it off', 'MOCKINGBIRD_LEARN=0'],
+                    ]}
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
+      </div>
+      <p class="mt-6">
+        <ArrowLink href={links.dictionary}>How the dictionary works</ArrowLink>
+      </p>
+    </Scene>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+function Record() {
+  return () => (
+    <Scene id="record" shape="rec" hue={hue('record')}>
+      <SceneHead
+        title="Fn+R records the meeting"
+        lede="Press it to start, and again to stop. It records your microphone and what your Mac plays, so a call has both sides."
+      />
+      <p class="flex items-center gap-3 border border-surface0 bg-crust px-4 py-3 text-[14px]">
+        <span aria-hidden="true" class="rec-dot text-red">
+          ●
+        </span>
+        <span class="font-bold text-red">REC</span>
+        <span class="truncate text-soft">~/.mockingbird/recordings/2026-10-15-1430.m4a</span>
+      </p>
+      <Spec
+        rows={[
+          ['Or type', 'mockingbird record, then record stop'],
+          ['Size', 'about 22 MB an hour'],
+          ['Reminder', 'a sound every 30 minutes'],
+          ['Stops itself', 'after 3 hours'],
+          ['Kept', 'on your Mac, until you delete it'],
+        ]}
+      />
+      <p class="mt-5 text-[15px] text-soft">
+        Holding Fn still dictates while it records. When the meeting ends, turn it into text with{' '}
+        <code class="text-sky">mockingbird transcribe</code>, or hand the file to your AI client.
+      </p>
+      <p class="mt-5 border-l-[3px] border-yellow pl-4 text-[14px] text-soft">
+        <strong class="text-yellow">Only record people who agreed to it.</strong> In many places, recording a conversation
+        without everyone's consent is illegal.
+      </p>
+      <p class="mt-6">
+        <ArrowLink href={links.record}>Recording a meeting</ArrowLink>
+      </p>
+    </Scene>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
+function Mcp() {
+  let tools: [string, string][] = [
+    ['transcribe', 'A recording or video as text, with [mm:ss] times and your dictionary\'s spellings'],
+    ['frames', 'Stills from a video, so a client that reads images sees the slides'],
+    ['render', 'Cuts clips out of a video into one MP4, vertical and captioned if asked'],
+    ['dictionary_list', 'The words mockingbird spells your way'],
+    ['dictionary_add', 'Adds one'],
+    ['status', 'Whether mockingbird is running, and what it\'s missing'],
+  ]
+  let json = '{ "mcpServers": { "mockingbird": { "command": "mockingbird", "args": ["mcp"] } } }'
+  return () => (
+    <Scene id="mcp" shape="plug" hue={hue('mcp')}>
+      <SceneHead
+        title="Hand a recording to your AI"
+        lede={
+          <>
+            <code class="text-sky">mockingbird mcp</code> gives Claude Code, Claude Desktop or Cursor mockingbird's
+            transcription and dictionary as tools. Ask for "turn this meeting into a spec": the transcript is made on your
+            Mac, and your client does the rest.
+          </>
+        }
+      />
+      <Tabs
+        name="mcp"
+        label="MCP"
+        tabs={[
+          {
+            label: 'Claude Code',
+            color: 'var(--sky)',
+            body: <Command command="claude mcp add mockingbird -- mockingbird mcp" foot="Then ask it to summarise a recording." />,
+          },
+          {
+            label: 'JSON config',
+            color: 'var(--blue)',
+            body: (
+              <>
+                <p class="mb-4 text-soft">
+                  For Claude Desktop's <code class="text-sky">claude_desktop_config.json</code>, Cursor's{' '}
+                  <code class="text-sky">mcp.json</code>, or any other client.
+                </p>
+                <pre class="overflow-x-auto border border-surface0 bg-crust px-4 py-3 text-[14px] text-text">{json}</pre>
+                <div class="mt-4">
+                  <CopyButton text={json} label="Copy config" />
+                </div>
+              </>
+            ),
+          },
+          {
+            label: 'Tools',
+            color: 'var(--teal)',
+            body: (
+              <table class="w-full text-left text-[14px]">
+                <tbody>
+                  {tools.map(([name, does]) => (
+                    <tr class="border-b border-surface0 last:border-0">
+                      <td class="py-2 pr-4 align-top whitespace-nowrap text-sky">{name}</td>
+                      <td class="py-2 text-soft">{does}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ),
+          },
+          {
+            label: 'Make a short',
+            color: 'var(--peach)',
+            body: (
+              <div class="space-y-4 text-soft">
+                <p>
+                  The <code class="text-sky">make_short</code> prompt walks your client through it: read the transcript,
+                  pick one to three moments, cut on word boundaries, write the captions, and render a 9:16 video.
+                </p>
+                <p class="text-[14px] text-overlay">
+                  mockingbird transcribes and runs ffmpeg. Which moments are worth keeping is up to your client.
+                </p>
+              </div>
+            ),
+          },
+        ]}
+      />
+      <p class="mt-6 border-l-[3px] border-sky pl-4 text-[14px] text-soft">
+        mockingbird still calls no cloud model and opens no port: it talks to the client over stdin and stdout.{' '}
+        <strong class="text-text">What a tool returns goes wherever that client sends it.</strong> A cloud model's
+        provider sees the transcript; a local model keeps it on your Mac.
+      </p>
+      <p class="mt-6">
+        <ArrowLink href={links.mcp}>Set it up</ArrowLink>
+      </p>
+    </Scene>
+  )
+}
+
+// ---------------------------------------------------------------------------
+
 function Command(handle: Handle<{ command: string; foot: RemixNode }>) {
   return () => {
     let { command, foot } = handle.props
@@ -273,9 +491,13 @@ function Install() {
     ['mockingbird start', 'Run in the background, now and at every login'],
     ['mockingbird stop', 'Stop, and stay stopped across reboots'],
     ['mockingbird restart', 'Restart (do this after granting a permission)'],
+    ['mockingbird setup', 'Walk through the permissions, Fn and a test dictation'],
     ['mockingbird status', "Whether it's running, and which permissions it has"],
     ['mockingbird listen', 'Dictate live in a terminal, with a level meter'],
     ['mockingbird transcribe <file>', 'Turn a recording (mp3, m4a, wav…) into text'],
+    ['mockingbird record', 'Record a meeting to a file, until mockingbird record stop'],
+    ['mockingbird dictionary', 'List, add and remove words it should spell right'],
+    ['mockingbird mcp', 'Give an AI client the transcription and dictionary'],
     ['mockingbird fn', 'Bind Fn to dictation, so it stops opening the emoji picker'],
   ]
   return () => (
@@ -333,6 +555,13 @@ function Install() {
                     <kbd class="kbd">fn</kbd>
                   </span>
                   double-tap: hands-free until the next Fn
+                </p>
+                <p class="flex items-center gap-3">
+                  <span class="flex gap-1">
+                    <kbd class="kbd">fn</kbd>
+                    <kbd class="kbd">r</kbd>
+                  </span>
+                  start or stop recording a meeting
                 </p>
                 {[
                   ['↗ tink', 'text-green', "it's recording"],
@@ -420,39 +649,16 @@ const ROADMAP: [string, string, [number, string][]][] = [
       [56, 'Measure Moonshine Streaming against Whisper'],
       [57, 'Transcribe while you speak, so letting go of Fn barely waits'],
       [58, 'Retune the cleanup prompt for a smaller default model'],
-      [59, 'Bench the whole trip: your audio through both models'],
-      [64, 'Ship 43 MB of the ONNX runtime instead of 287 MB'],
     ],
   ],
   [
-    'Smarter cleanup',
-    'var(--mauve)',
-    [
-      [62, 'Learn dictionary words from your own corrections'],
-      [61, 'Move the dictionary into SQLite'],
-      [35, 'Keep the cleanup rules in a Markdown file you can edit'],
-      [51, 'Pick the cleanup model from the Ollama models you have'],
-      [60, 'Let model settings reach the background agent'],
-    ],
-  ],
-  [
-    'Easier install',
+    'Easier to use',
     'var(--green)',
     [
-      [52, "Offer to install Homebrew when it's missing"],
-      [48, 'Live download progress bars instead of a clock'],
+      [54, 'Guide the first run: permissions, Fn, a test dictation'],
+      [101, 'Drag a file into the terminal to transcribe it'],
+      [102, 'Show the dictionary as a readable table'],
       [49, 'Draw the install with the Bubble Tea UI'],
-      [30, 'A guided install for MacBooks'],
-      [55, 'mockingbird uninstall: remove everything an install added'],
-    ],
-  ],
-  [
-    'First run',
-    'var(--peach)',
-    [
-      [54, 'Walk through permissions, Fn and a test dictation'],
-      [50, 'A home screen with every command when you type mockingbird'],
-      [36, 'Show the logo in macOS permission lists'],
     ],
   ],
   [
@@ -462,9 +668,6 @@ const ROADMAP: [string, string, [number, string][]][] = [
       [32, 'Google Docs in Chrome only gets the first characters'],
       [31, 'Double-tapping Fn opens the emoji picker'],
       [33, 'Lists lose their line breaks in Mail and WhatsApp'],
-      [34, 'A dictated list starts on the same line as the text before it'],
-      [63, 'mockingbird: command not found after the curl install'],
-      [29, 'The curl installer fails on a MacBook Air M2'],
     ],
   ],
 ]

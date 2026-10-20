@@ -397,6 +397,14 @@
   animation: nudge 1.6s steps(3) infinite;
 }
 
+/* the meeting scene's REC light blinks, in step with its pixel one */
+@keyframes rec-blink {
+  67% { opacity: 0.25; }
+}
+.rec-dot {
+  animation: rec-blink 1.2s steps(1) infinite;
+}
+
 /* flavor switch: a quick diagonal wipe (View Transitions) */
 ::view-transition-old(root),
 ::view-transition-new(root) {
