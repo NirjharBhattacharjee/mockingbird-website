@@ -241,6 +241,26 @@ organise). Remove filler words. Return only the text.
 Sections you leave out stay as shipped. Your file replaces a whole section,
 so copy the shipped one and edit it rather than starting from nothing.
 
+### `mockingbird record`: record a meeting to a file
+
+```sh
+mockingbird record        # starts, with a sound, and prints where the file goes
+mockingbird record stop   # stops, and prints the file
+```
+
+Or press **Fn+R** to start, and **Fn+R** again to stop; the file is named in
+the log. The "r" isn't typed into the app in front, as long as mockingbird
+has Accessibility. Recordings go to `~/.mockingbird/recordings/`, as `2026-10-15-1430.m4a`
+(about 22 MB an hour), and stay until you delete them. Holding Fn still
+dictates while one runs. A reminder sound plays every 30 minutes, and a
+recording stops by itself after 3 hours (`MOCKINGBIRD_RECORD_MAX_HOURS`).
+`mockingbird status` shows one that's running. It records your microphone
+and what the Mac plays, so on a call it has both sides; if system audio
+can't start, it records the microphone alone, and the log's `recording to`
+line leaves out "with system audio". **Only record people who agreed to
+it:** in many places, recording a conversation without everyone's consent
+is illegal.
+
 ### `mockingbird listen`: talk live in a terminal
 
 | Key | Does |
@@ -371,6 +391,7 @@ Environment variables:
 | `MOCKINGBIRD_LEARN_EXCLUDE` (bundle ids, comma separated, never read to learn from) | none |
 | `MOCKINGBIRD_LLM_URL` | `http://127.0.0.1:11434` |
 | `MOCKINGBIRD_LLM_MODEL` | `qwen3:4b-instruct-2507-q4_K_M` |
+| `MOCKINGBIRD_RECORD_MAX_HOURS` (when a recording stops by itself) | `3` |
 
 The background agent reads them from the shell that last ran `mockingbird start`
 or `restart`, so run `mockingbird restart` after changing one.
@@ -387,7 +408,7 @@ or `restart`, so run `mockingbird restart` after changing one.
 | The level bars don't move | Wrong microphone. Use `--list-devices` and `--device`. |
 | `Fn key off` or `Fn` does nothing | Allow your terminal in **System Settings → Privacy & Security → Input Monitoring**, then quit it with Cmd+Q and reopen. |
 | Tapping `Fn` opens the emoji picker, and the text lands in its search box | macOS has its own action on that key. Set **System Settings → Keyboard → "Press 🌐 key to"** to **Do Nothing**. Holding `Fn` works either way; `mockingbird status` tells you when this is set. |
-| A new sentence runs into the last one, with no space | That app doesn't let mockingbird see the text before the cursor, which is common in web pages, Google Docs, and Electron apps like Slack. There it only adds the space right after its own last dictation, so a key press or click in between means no space. Check with `mockingbird type --check --delay 3` and click into the app. Terminals never get the space. |
+| A new sentence runs into the last one, with no space | That app doesn't let mockingbird see the text before the cursor, which is common in web pages, Google Docs, and Electron apps like Slack. There it only adds the space right after its own last dictation, so a key press or click in between means no space. Check with `mockingbird type --check --delay 3` and click into the app. Terminals work the same way: the space comes only right after mockingbird's own last dictation there, so pressing Enter in between means none. |
 | Text prints but isn't typed into the app | The agent needs **Accessibility** on `~/.mockingbird/bin/mockingbird`, then `mockingbird restart`. In `listen`, allow your terminal instead and reopen it. Check with `mockingbird type --check`. |
 | `Ollama isn't running` | `listen` starts Ollama by itself, so this means it's missing or failed to start: run the install command again. You still get text, just not cleaned up. |
 | `… isn't downloaded` | Run `ollama pull qwen3:4b-instruct-2507-q4_K_M` (or the install command again). |
