@@ -87,7 +87,8 @@ export function Scene(handle: Handle<{ id: string; shape: string; hue: string; c
     return (
       <section id={id} data-scene={id} data-shape={shape} class="relative z-10" style={{ '--hue': hue } as Vars}>
         <div data-stage aria-hidden="true" class="sticky top-0 h-[100svh]" />
-        <div class="relative -mt-[22svh] flex justify-center px-4 pb-[18svh]">
+        {/* tall enough that even a short panel rises over the whole shape */}
+        <div class="relative -mt-[22svh] flex min-h-[85svh] items-start justify-center px-4 pb-[18svh]">
           <div class="reveal panel w-full max-w-[46rem]">{children}</div>
         </div>
       </section>
