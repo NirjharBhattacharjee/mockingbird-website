@@ -69,7 +69,7 @@ function Hero() {
     >
       <div class="flex w-full flex-col items-center text-center">
         <a href={links.releases} class="rise border border-sky/40 bg-crust px-3 py-1 text-[14px] text-sky hover:border-sky">
-          v0.2.3 is out. See what's new →
+          v0.2.5 is out. See what's new →
         </a>
 
         <div id="bird-slot" aria-hidden="true" class="mt-8" style={{ width: 'calc(var(--px) * 20)', height: 'calc(var(--px) * 26)' }} />
@@ -657,7 +657,6 @@ const ROADMAP: [string, string, [number, string][]][] = [
     [
       [54, 'Guide the first run: permissions, Fn, a test dictation'],
       [101, 'Drag a file into the terminal to transcribe it'],
-      [102, 'Show the dictionary as a readable table'],
       [49, 'Draw the install with the Bubble Tea UI'],
     ],
   ],
