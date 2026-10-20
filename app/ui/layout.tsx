@@ -77,23 +77,20 @@ export function Nav(handle: Handle<{ home?: boolean; current?: string }>) {
   }
 }
 
-// One full-height section of the home page. The text panel is the content,
-// centered. The whole section is the stage the pixel field draws this
-// scene's shape on, behind and around the panel, in the scene's hue.
+// One section of the home page. It opens on its stage: a sticky,
+// full-screen area where the pixel field draws this scene's shape, clear of
+// text so you can touch it, with the text panel peeking in at the bottom.
+// Scrolling on, the panel rises over the shape, which dims as it's covered.
 export function Scene(handle: Handle<{ id: string; shape: string; hue: string; children?: RemixNode }>) {
   return () => {
     let { id, shape, hue, children } = handle.props
     return (
-      <section
-        id={id}
-        data-scene={id}
-        data-shape={shape}
-        class="relative z-10 flex min-h-[100svh] items-center justify-center px-4 pt-56 pb-24 md:py-24"
-        style={{ '--hue': hue } as Vars}
-      >
-        {/* on phones the shape sits in the band above the panel */}
-        <div data-stage aria-hidden="true" class="absolute inset-x-0 top-0 h-56 md:inset-0 md:h-auto" />
-        <div class="reveal panel relative w-full max-w-[46rem]">{children}</div>
+      <section id={id} data-scene={id} data-shape={shape} class="relative z-10" style={{ '--hue': hue } as Vars}>
+        <div data-stage aria-hidden="true" class="sticky top-0 h-[100svh]" />
+        {/* tall enough that even a short panel rises over the whole shape */}
+        <div class="relative -mt-[22svh] flex min-h-[85svh] items-start justify-center px-4 pb-[18svh]">
+          <div class="reveal panel w-full max-w-[46rem]">{children}</div>
+        </div>
       </section>
     )
   }

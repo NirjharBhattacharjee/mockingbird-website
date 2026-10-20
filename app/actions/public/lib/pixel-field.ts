@@ -69,6 +69,8 @@ interface Mote {
 
 /** how far toward the background each depth step pulls a pixel's color */
 const DEPTH = [0, 0.16, 0.32, 0.48]
+// how many steps a shape dims in as the text panel covers it (to 40%)
+const DIM_STEPS = 7
 
 interface Particle {
   /** where it was last drawn, px */
@@ -246,8 +248,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
       // pixels; the road and heart are finer still
       let fine = shape === 'road' || shape === 'heart' ? 0.45 : 0.6
       let cell = Math.max(3, Math.round((C * fine) / density))
-      // big enough to frame the centered panel: wings and edges show around it
-      let size = Math.max(8, Math.floor(Math.min(r.width * 0.88, H * 1.05) / cell))
+      // fits the screen above the panel that peeks in at the bottom; the
+      // road is a landscape that runs on under it
+      let fit = shape === 'road' ? 1.05 : 0.66
+      let size = Math.max(8, Math.floor(Math.min(r.width * 0.88, r.height * fit) / cell))
       let cells = buildShape(shape, size, logo)
       // shuffle, so a morph sends pixels criss-crossing like a flock
       cells.sort((a, b) => hash(a.x, a.y, 11) - hash(b.x, b.y, 11))
@@ -562,13 +566,13 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     }
     return str
   }
-  /** `c` pushed back `depth` steps, and dimmed behind a text panel. */
-  function shade(c: RGB, depth: number, dim: boolean) {
-    let k = pack(c) * 8 + depth * 2 + (dim ? 1 : 0)
+  /** `c` pushed back `depth` steps, and dimmed `dim` of DIM_STEPS steps as the text panel covers it. */
+  function shade(c: RGB, depth: number, dim: number) {
+    let k = pack(c) * 32 + depth * 8 + dim
     let str = shades.get(k)
     if (!str) {
       if (shades.size > 8192) shades.clear()
-      shades.set(k, (str = css(mix(c, palette.bg, 1 - (1 - DEPTH[depth]) * (dim ? 0.4 : 1)))))
+      shades.set(k, (str = css(mix(c, palette.bg, 1 - (1 - DEPTH[depth]) * (1 - 0.6 * (dim / DIM_STEPS))))))
     }
     return str
   }
@@ -812,8 +816,11 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
     // shape with depth never shows through itself
     let near: [string, number, number, number][] = []
     let push = 6 * C
-    // pixels behind the scene's text panel dim, so the text stays readable
-    let panel = f.anchor.parentElement?.querySelector('.panel')?.getBoundingClientRect()
+    // the shape dims as the scene's text panel rises over it, and the pixels
+    // right behind the panel dim a little sooner, so the text stays readable
+    // (not while flying: the panel is hidden then)
+    let panel = flight.on ? undefined : f.anchor.parentElement?.querySelector('.panel')?.getBoundingClientRect()
+    let cover = panel ? Math.round(DIM_STEPS * clamp01((r.height * 0.85 - panel.top) / (r.height * 0.6))) : 0
     for (let [letter, g] of glitches) if (g.until < now) glitches.delete(letter)
 
     particles.forEach((pt, i) => {
@@ -845,10 +852,10 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
         depth = Math.max(c.fade ?? 0, z < -half * 0.45 ? 3 : z < -half * 0.25 ? 2 : z < -half * 0.08 ? 1 : 0)
       }
       let goal: RGB = palette.bg
-      let dim = false
+      let dim = cover
       if (c) {
         goal = wb && c.letter !== undefined ? wb[c.letter][c.group] : palette[c.role]
-        dim = Boolean(highlight && c.group && f.anchor.closest('#how') && c.group !== highlight)
+        if (highlight && c.group && f.anchor.closest('#how') && c.group !== highlight) dim = DIM_STEPS
         // pressed (F held, or the key clicked): the cap lights up, and its
         // rim glows brighter with the voice level, like a backlit key
         if (pressed) goal = mix(goal, palette.crest, c.role === 'lavender' ? 0.35 + 0.5 * level : 0.35)
@@ -926,7 +933,7 @@ export function createPixelField({ birdSrc, signal }: FieldOptions) {
           color = mix(color, palette.crest, 0.4)
         }
       }
-      if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) dim = true
+      if (panel && x >= panel.left && x < panel.right && y >= panel.top && y < panel.bottom) dim = Math.max(dim, DIM_STEPS - 2)
       if (z > 0) near.push([shade(color, depth, dim), x, y, size])
       else paint(shade(color, depth, dim), x, y, size)
       // in flight, a short streak behind each pixel
