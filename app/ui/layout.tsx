@@ -48,6 +48,9 @@ export function Nav(handle: Handle<{ home?: boolean; current?: string }>) {
             id="home-slot"
             href="/"
             data-flies={home ? '' : undefined}
+            // home to home reloads the document: a client-side navigation
+            // diffs the page in place and drops the canvas pixel-field prepended to <body>
+            data-rmx-document={home ? '' : undefined}
             class="pointer-events-auto flex items-center gap-2.5"
             aria-label="mockingbird home"
           >
