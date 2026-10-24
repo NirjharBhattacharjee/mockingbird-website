@@ -77,6 +77,6 @@ From mockingbird's [philosophy](https://github.com/NirjharBhattacharjee/mockingb
 - [CONTRIBUTING.md](CONTRIBUTING.md): checks to run, and how deploys work
 - [design/MOTION.md](design/MOTION.md): motion notes
 
-Every merge to `main` deploys to [mockingbirdvoice.org](https://mockingbirdvoice.org) on Render.
+Every merge to `main` deploys to [mockingbirdvoice.org](https://mockingbirdvoice.org) on Render, once CI passes on that commit.
 
 MIT, same as mockingbird.
