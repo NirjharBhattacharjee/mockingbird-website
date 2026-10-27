@@ -66,6 +66,17 @@
   --green: #40a02b; --peach: #fe640b; --yellow: #df8e1d; --red: #d20f39; --rosewater: #dc8a78;
   color-scheme: light;
 }
+/* Halloween: pumpkin, candlelight and witch purple on a moonless night.
+   Seasonal, offered through October 31 (see flavor-button.tsx); delete it
+   and the bats below after. */
+[data-flavor="halloween"] {
+  --crust: #0c090e; --mantle: #130e16; --base: #1a1320;
+  --surface0: #2b2032; --surface1: #3d2d46; --surface2: #54405e;
+  --overlay1: #8f7f93; --subtext0: #b9aab4; --subtext1: #cdc0c6; --text: #efe3da;
+  --sky: #ff8c1a; --teal: #ffb347; --blue: #ff6a3d; --mauve: #a855f7; --lavender: #c38bff;
+  --green: #8ee34f; --peach: #ff7a2e; --yellow: #ffd23f; --red: #e5304a; --rosewater: #f2d6c4;
+  color-scheme: dark;
+}
 
 @theme inline {
   --color-crust: var(--crust);
@@ -427,6 +438,49 @@
 }
 .pixelated {
   image-rendering: pixelated;
+}
+
+/* Halloween: two pixel bats flap across the home page (box-shadow pixel art,
+   3px a pixel). With reduced motion they hang still in the corners. */
+[data-flavor="halloween"] body:has([data-scene])::before,
+[data-flavor="halloween"] body:has([data-scene])::after {
+  content: "";
+  position: fixed;
+  top: 16vh;
+  left: 6vw;
+  z-index: 1;
+  width: 3px;
+  height: 3px;
+  pointer-events: none;
+  color: color-mix(in oklab, var(--mauve), var(--crust) 35%);
+  box-shadow:
+    0 0, 30px 0,
+    0 3px, 3px 3px, 12px 3px, 18px 3px, 27px 3px, 30px 3px,
+    3px 6px, 6px 6px, 9px 6px, 12px 6px, 15px 6px, 18px 6px, 21px 6px, 24px 6px, 27px 6px,
+    6px 9px, 9px 9px, 15px 9px, 21px 9px, 24px 9px,
+    15px 12px;
+  animation: bat-cross 19s linear infinite, bat-flap 0.36s steps(1) infinite;
+}
+[data-flavor="halloween"] body:has([data-scene])::after {
+  top: 9vh;
+  left: 84vw;
+  animation-name: bat-cross-back, bat-flap;
+  animation-duration: 27s, 0.3s;
+  animation-delay: -11s, 0s;
+}
+@keyframes bat-cross {
+  from { translate: -20vw 30vh; }
+  35% { translate: 30vw 8vh; }
+  70% { translate: 70vw 24vh; }
+  to { translate: 120vw 4vh; }
+}
+@keyframes bat-cross-back {
+  from { translate: 30vw 6vh; }
+  50% { translate: -40vw 26vh; }
+  to { translate: -110vw 12vh; }
+}
+@keyframes bat-flap {
+  50% { scale: 1 0.35; }
 }
 
 /* without JS, show a text wordmark in place of the canvas one */

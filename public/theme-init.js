@@ -5,7 +5,10 @@
   root.classList.add('js')
   try {
     var flavor = localStorage.getItem('mb-flavor')
-    if (['mocha', 'macchiato', 'frappe', 'latte'].indexOf(flavor) >= 0) root.dataset.flavor = flavor
+    var flavors = ['mocha', 'macchiato', 'frappe', 'latte']
+    // Seasonal: same cut-off as FLAVORS in app/actions/public/flavor-button.tsx
+    if (new Date() < new Date(2026, 10, 1)) flavors.push('halloween')
+    if (flavors.indexOf(flavor) >= 0) root.dataset.flavor = flavor
   } catch (e) {}
   // Same formula as cellSize() in app/actions/public/lib/pixel-field.ts:
   // the "mockingbird" wordmark is 82 cells wide, plus 4 cells of margin.
