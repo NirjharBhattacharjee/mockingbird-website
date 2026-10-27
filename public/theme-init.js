@@ -3,11 +3,16 @@
 ;(function () {
   var root = document.documentElement
   root.classList.add('js')
+  var flavors = ['mocha', 'macchiato', 'frappe', 'latte']
+  // Seasonal: through October 31, Halloween is the default for anyone who
+  // hasn't picked a flavor. Same cut-off as FLAVORS in
+  // app/actions/public/flavor-button.tsx
+  if (new Date() < new Date(2026, 10, 1)) {
+    flavors.push('halloween')
+    root.dataset.flavor = 'halloween'
+  }
   try {
     var flavor = localStorage.getItem('mb-flavor')
-    var flavors = ['mocha', 'macchiato', 'frappe', 'latte']
-    // Seasonal: same cut-off as FLAVORS in app/actions/public/flavor-button.tsx
-    if (new Date() < new Date(2026, 10, 1)) flavors.push('halloween')
     if (flavors.indexOf(flavor) >= 0) root.dataset.flavor = flavor
   } catch (e) {}
   // Same formula as cellSize() in app/actions/public/lib/pixel-field.ts:
