@@ -6,10 +6,10 @@ import { musicPlaying, startMusic, stopMusic } from './lib/spooky-music.ts'
 type Flavor = 'mocha' | 'macchiato' | 'frappe' | 'latte' | 'halloween'
 const FLAVORS: Flavor[] = ['mocha', 'macchiato', 'frappe', 'latte']
 const LABELS: Record<Flavor, string> = { mocha: 'Mocha', macchiato: 'Macchiato', frappe: 'Frappé', latte: 'Latte', halloween: 'Halloween' }
-// Seasonal: Halloween comes right after Mocha through October 31, then drops
-// out (same date in public/theme-init.js). Delete it, lib/spooky-music.ts and
-// its CSS after that.
-if (new Date() < new Date(2026, 10, 1)) FLAVORS.splice(1, 0, 'halloween')
+// Seasonal: Halloween is the default and leads the cycle through October 31,
+// then drops out (same date in public/theme-init.js). Delete it,
+// lib/spooky-music.ts and its CSS after that.
+if (new Date() < new Date(2026, 10, 1)) FLAVORS.unshift('halloween')
 const saved = storage('mb-flavor')
 
 function currentFlavor(): Flavor {
