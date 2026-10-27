@@ -1,6 +1,6 @@
 import { clientEntry, on, type Handle } from 'remix/component'
 
-import { THEME_EVENT, isPageShortcut, prefersReducedMotion, storage } from './lib/events.ts'
+import { THEME_EVENT, cx, isPageShortcut, prefersReducedMotion, storage } from './lib/events.ts'
 import { musicPlaying, startMusic, stopMusic } from './lib/spooky-music.ts'
 
 type Flavor = 'mocha' | 'macchiato' | 'frappe' | 'latte' | 'halloween'
@@ -82,15 +82,21 @@ export const FlavorButton = clientEntry(import.meta.url, function FlavorButton(h
           aria-pressed={musicPlaying()}
           mix={on('click', toggleMusic)}
         >
-          <span aria-hidden="true" class="text-sky">
+          {/* phones get a lone ♪ (struck through when off), so the nav fits at 320px */}
+          <span aria-hidden="true" class="text-sky max-sm:hidden">
             [m]
           </span>
           <span class="max-sm:sr-only">music</span>
-          <span aria-hidden="true">{musicPlaying() ? 'on' : 'off'}</span>
+          <span aria-hidden="true" class="max-sm:hidden">
+            {musicPlaying() ? 'on' : 'off'}
+          </span>
+          <span aria-hidden="true" class={cx('sm:hidden', musicPlaying() ? 'text-sky' : 'line-through opacity-50')}>
+            ♪
+          </span>
         </button>
       )}
       <button type="button" title="Change the flavor (T)" class="chip" aria-keyshortcuts="t" mix={on('click', cycle)}>
-        <span aria-hidden="true" class="text-sky">
+        <span aria-hidden="true" class={cx('text-sky', flavor === 'halloween' && 'max-sm:hidden')}>
           [t]
         </span>
         <span aria-hidden="true" class="grid grid-cols-2 gap-px">
